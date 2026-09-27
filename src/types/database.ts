@@ -141,16 +141,29 @@ export type DisputeStatus =
   | 'resolved_split'
   | 'dismissed';
 
+/**
+ * Mirrors the `notification_type` PostgreSQL enum.
+ *
+ * The four values marked "Stage 12" were added by migration
+ * 00013_notifications_stage12.sql. Stage 1 had no variant for a rejected
+ * proposal, a created milestone, a failed payment or a completed contract, so
+ * four of the fourteen events the notification system must cover had nowhere to
+ * be recorded.
+ */
 export type NotificationType =
   | 'proposal_received'
   | 'proposal_shortlisted'
   | 'proposal_accepted'
+  | 'proposal_rejected' // Stage 12
   | 'contract_created'
   | 'contract_accepted'
+  | 'contract_completed' // Stage 12
+  | 'milestone_created' // Stage 12
   | 'milestone_submitted'
   | 'milestone_approved'
   | 'milestone_revision'
   | 'payment_escrowed'
+  | 'payment_failed' // Stage 12
   | 'payment_released'
   | 'message_received'
   | 'review_submitted'
@@ -388,6 +401,68 @@ export interface Milestone {
   updated_at: string;
 }
 
+// Stage 11: reviews and reputation.
+//
+// A review is only creatable by one party on a contract, rating the other, and
+// only while the contract is `completed`. Those rules are enforced by the
+// `enforce_review_integrity` trigger in migration 00010, not only here.
+export interface Review {
+  id: string;
+  contract_id: string;
+  reviewer_user_id: string;
+  reviewee_user_id: string;
+  reviewer_role: UserRole;
+  reviewee_role: UserRole | null;
+  rating_overall: number;
+  rating_communication: number;
+  rating_quality: number;
+  rating_timeliness: number;
+  feedback_markdown: string | null;
+  is_public: boolean;
+  edit_count: number;
+  edited_at: string | null;
+  deleted_at: string | null;
+  deleted_by_user_id: string | null;
+  deletion_reason: string | null;
+  contract_completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ReviewEditAction = 'created' | 'edited' | 'deleted';
+
+export interface ReviewEdit {
+  id: string;
+  review_id: string;
+  editor_user_id: string;
+  action: ReviewEditAction;
+  before_state: Record<string, unknown> | null;
+  after_state: Record<string, unknown> | null;
+  created_at: string;
+}
+
+/**
+ * Denormalised reputation, written only by `public.refresh_reputation`.
+ *
+ * `avg_rating_overall` is the real arithmetic mean and is what the UI shows.
+ * `bayesian_rating` is a smoothed ordering aid and must never be displayed as if
+ * it were a rating a reviewer gave.
+ */
+export interface Reputation {
+  user_id: string;
+  total_reviews_count: number;
+  completed_contracts_count: number;
+  avg_rating_overall: number;
+  avg_rating_communication: number;
+  avg_rating_quality: number;
+  avg_rating_timeliness: number;
+  bayesian_rating: number;
+  rating_distribution: Record<string, number>;
+  refreshed_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Notification {
   id: string;
   user_id: string;
@@ -397,7 +472,156 @@ export interface Notification {
   action_url: string | null;
   entity_type: string | null;
   entity_id: string | null;
+  /** Who caused the event. NULL once that user is deleted. Stage 12. */
+  actor_user_id: string | null;
+  /** Template variables, as rendered at emit time. Stage 12. */
+  metadata: Record<string, unknown>;
+  /**
+   * Deterministic identity of the event. A partial unique index on this column is
+   * what makes "no duplicate notifications for the same event" a database
+   * guarantee rather than an application convention. NULL for a deliberate
+   * one-off. Stage 12.
+   */
+  dedup_key: string | null;
   is_read: boolean;
   read_at: string | null;
+  created_at: string;
+}
+
+/** Per-channel delivery record. One row per (notification, channel). Stage 12. */
+export interface NotificationDelivery {
+  id: string;
+  notification_id: string;
+  channel: string;
+  status: 'pending' | 'sent' | 'failed' | 'skipped';
+  attempt_count: number;
+  provider_message_id: string | null;
+  last_error: string | null;
+  next_retry_at: string | null;
+  sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * A user's explicit preference override. Only overrides are stored; a missing row
+ * means "no opinion" and the defaults in `src/lib/notifications/defaults.ts` apply.
+ * Stage 12.
+ */
+export interface NotificationPreference {
+  user_id: string;
+  type: NotificationType;
+  channel: string;
+  enabled: boolean;
+  updated_at: string;
+}
+
+// Stage 10: payment ledger.
+//
+// Amounts are integer minor units (paise) throughout. The database CHECK
+// `chk_payment_math` enforces gross_amount_cents = platform_fee_cents +
+// net_amount_cents, so any writer must satisfy that identity.
+export interface Payment {
+  id: string;
+  contract_id: string;
+  milestone_id: string | null;
+  payer_client_id: string;
+  recipient_consultant_id: string;
+  gross_amount_cents: number;
+  platform_fee_cents: number;
+  net_amount_cents: number;
+  currency: string;
+  provider: string;
+  razorpay_order_id: string | null;
+  razorpay_payment_id: string | null;
+  razorpay_refund_id: string | null;
+  status: PaymentStatus;
+  escrow_funded_at: string | null;
+  escrow_released_at: string | null;
+  refunded_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Payout {
+  id: string;
+  consultant_id: string;
+  payment_id: string;
+  amount_cents: number;
+  currency: string;
+  razorpay_transfer_id: string | null;
+  razorpay_settlement_id: string | null;
+  status: PayoutStatus;
+  failure_reason: string | null;
+  processed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type PaymentRefundStatus = 'pending' | 'processed' | 'failed';
+
+export interface PaymentRefund {
+  id: string;
+  payment_id: string;
+  provider: string;
+  provider_refund_id: string | null;
+  amount_cents: number;
+  currency: string;
+  status: PaymentRefundStatus;
+  speed: 'normal' | 'optimum' | null;
+  reason: string | null;
+  failure_reason: string | null;
+  initiated_by_user_id: string | null;
+  transfer_reversal_id: string | null;
+  processed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlatformFeeConfig {
+  id: string;
+  scope: 'global' | 'contract' | 'milestone';
+  contract_id: string | null;
+  milestone_id: string | null;
+  basis_points: number;
+  fixed_cents: number;
+  min_fee_cents: number;
+  max_fee_cents: number | null;
+  currency: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type PaymentWebhookProcessingStatus =
+  | 'received'
+  | 'processed'
+  | 'ignored'
+  | 'failed';
+
+export interface PaymentWebhookEvent {
+  id: string;
+  provider: string;
+  provider_event_id: string;
+  event_type: string;
+  processing_status: PaymentWebhookProcessingStatus;
+  payment_id: string | null;
+  attempt_count: number;
+  last_error: string | null;
+  payload: Record<string, unknown>;
+  received_at: string;
+  processed_at: string | null;
+  created_at: string;
+}
+
+export interface PaymentStatusHistory {
+  id: string;
+  payment_id: string;
+  from_status: string | null;
+  to_status: string;
+  trigger_source: 'service' | 'webhook' | 'reconciliation';
+  provider_event_id: string | null;
+  actor_user_id: string | null;
+  metadata: Record<string, unknown>;
   created_at: string;
 }

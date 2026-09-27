@@ -3,6 +3,15 @@ import { BaseService } from './base.service';
 import type { Contract, ContractStatus, Milestone, MilestoneStatus } from '@/types/database';
 import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from '@/lib/errors';
 import { CONTRACT_TRANSITIONS, MILESTONE_TRANSITIONS } from '@/lib/validations/contract.schemas';
+import { NotificationService } from '@/services/notification.service';
+import {
+  contractCompleted,
+  contractCreated,
+  disputeOpened,
+  milestoneApproved,
+  milestoneCreated,
+  milestoneSubmitted,
+} from '@/lib/notifications/events';
 
 export interface CreateContractData {
   proposal_id: string;
@@ -51,10 +60,147 @@ export class ContractService extends BaseService {
         p_end_date: input.end_date || null,
       });
       if (error || !contract) throw new AppError('Failed to create contract.', 500, 'DB_INSERT_ERROR', error);
+      await this.notifyContractCreated(contract as Contract, clientUserId);
       return contract as Contract;
     } catch (error) {
       if (error instanceof AppError) throw error;
       this.handleError(error, 'ContractService.createContract');
+    }
+  }
+
+  /**
+   * Tell the consultant a contract is ready for them to review.
+   *
+   * The contract is created by the client, so the consultant is the party who
+   * needs to act. The recipient is resolved from the contract's own
+   * `consultant_id` → profile, never from the caller. Swallowed on failure: the
+   * contract already exists and a failed email must not undo it.
+   */
+  private static async notifyContractCreated(
+    contract: Contract,
+    actorUserId: string
+  ): Promise<void> {
+    try {
+      const db = createAdminClient();
+      const { data: consultant } = await db
+        .from('consultant_profiles')
+        .select('user_id')
+        .eq('id', contract.consultant_id)
+        .maybeSingle();
+      if (!consultant?.user_id) return;
+
+      const { data: actorProfile } = await db
+        .from('profiles')
+        .select('display_name')
+        .eq('user_id', actorUserId)
+        .maybeSingle();
+
+      await contractCreated(NotificationService.emitEvent, {
+        recipientUserId: String(consultant.user_id),
+        actorUserId,
+        actorName: actorProfile?.display_name ?? null,
+        contractId: contract.id,
+        contractTitle: contract.title,
+      });
+    } catch (error) {
+      console.error('[ContractService] failed to send contract-created notification:', error);
+    }
+  }
+
+  /**
+   * Tell the counterparty a milestone was added.
+   *
+   * Milestones are added by the client, so the consultant is the party who needs
+   * to know. Email is off for this event by default (both parties can already see
+   * it in the contract view), so in practice this is an in-app notice.
+   */
+  private static async notifyMilestoneCreated(
+    milestone: Milestone,
+    contract: { title?: string },
+    actorUserId: string
+  ): Promise<void> {
+    try {
+      const db = createAdminClient();
+      const full = await this.getRaw(milestone.contract_id);
+      const { data: consultant } = await db
+        .from('consultant_profiles')
+        .select('user_id')
+        .eq('id', full.consultant_id)
+        .maybeSingle();
+      if (!consultant?.user_id) return;
+
+      const { data: actorProfile } = await db
+        .from('profiles')
+        .select('display_name')
+        .eq('user_id', actorUserId)
+        .maybeSingle();
+
+      await milestoneCreated(NotificationService.emitEvent, {
+        recipientUserId: String(consultant.user_id),
+        actorUserId,
+        actorName: actorProfile?.display_name ?? null,
+        milestoneId: milestone.id,
+        milestoneTitle: milestone.title,
+        contractId: milestone.contract_id,
+        contractTitle: contract.title ?? full.title ?? 'your contract',
+      });
+    } catch (error) {
+      console.error('[ContractService] failed to send milestone-created notification:', error);
+    }
+  }
+
+  /**
+   * Tell the counterparty that a dispute has been opened against the contract.
+   *
+   * A contract entering `disputed` is the authoritative moment a dispute begins:
+   * the `disputes` table exists and Stage 13's admin service can list and resolve
+   * disputes, but nothing in the application inserts a dispute row yet, so there
+   * is no dispute id to key on and the contract is used as the event identity.
+   *
+   * Only the respondent is told, so the person opening the dispute is not
+   * notified about their own action.
+   */
+  private static async notifyDisputeOpened(
+    contract: Contract,
+    actorUserId: string
+  ): Promise<void> {
+    try {
+      const db = createAdminClient();
+      const { data: actor } = await db
+        .from('client_profiles')
+        .select('user_id')
+        .eq('id', contract.client_id)
+        .maybeSingle();
+      // Whoever is not the client is the counterparty here, and the actor is
+      // either the client or the consultant, so the counterparty is resolved by
+      // elimination from the two known parties.
+      const respondentUserId =
+        actor?.user_id === actorUserId
+          ? (
+              await db
+                .from('consultant_profiles')
+                .select('user_id')
+                .eq('id', contract.consultant_id)
+                .maybeSingle()
+            ).data?.user_id
+          : actor?.user_id;
+      if (!respondentUserId) return;
+
+      const { data: actorProfile } = await db
+        .from('profiles')
+        .select('display_name')
+        .eq('user_id', actorUserId)
+        .maybeSingle();
+
+      await disputeOpened(NotificationService.emitEvent, {
+        recipientUserId: String(respondentUserId),
+        actorUserId,
+        actorName: actorProfile?.display_name ?? null,
+        contractId: contract.id,
+        contractTitle: contract.title,
+      });
+    } catch (error) {
+      console.error('[ContractService] failed to send dispute-opened notification:', error);
     }
   }
 
@@ -96,7 +242,60 @@ export class ContractService extends BaseService {
     if (['cancelled', 'terminated'].includes(next)) payload.cancelled_at = new Date().toISOString();
     const { data, error } = await db.from('contracts').update(payload).eq('id', id).select('*').single();
     if (error || !data) throw new AppError('Failed to transition contract.', 500, 'DB_UPDATE_ERROR', error);
+
+    // On completion both parties are told, because both can now leave a review
+    // and only the client can, so the consultant needs the prompt most.
+    if (next === 'completed') {
+      await this.notifyContractCompleted(data as Contract, userId);
+    }
+
+    // Entering `disputed` is the moment a dispute opens: funds are frozen and the
+    // counterparty has to be told. The application has no dispute-creation flow
+    // yet, so this is anchored to the state change that constitutes one.
+    if (next === 'disputed') {
+      await this.notifyDisputeOpened(data as Contract, userId);
+    }
+
     return data as Contract;
+  }
+
+  /**
+   * Announce a completed contract to both participants.
+   *
+   * Deduped on the contract id, so a retried completion cannot notify twice.
+   * Swallowed on failure: the contract is already completed and refusing to
+   * complete it because an email failed would be the wrong trade.
+   */
+  private static async notifyContractCompleted(
+    contract: Contract,
+    actorUserId: string
+  ): Promise<void> {
+    try {
+      const db = createAdminClient();
+      const [{ data: client }, { data: consultant }, { data: actorProfile }] = await Promise.all([
+        db.from('client_profiles').select('user_id').eq('id', contract.client_id).single(),
+        db.from('consultant_profiles').select('user_id').eq('id', contract.consultant_id).single(),
+        db
+          .from('profiles')
+          .select('display_name')
+          .eq('user_id', actorUserId)
+          .maybeSingle(),
+      ]);
+
+      const emit = NotificationService.emitEvent;
+      for (const userId of [client?.user_id, consultant?.user_id]) {
+        if (!userId) continue;
+        await contractCompleted(emit, {
+          recipientUserId: String(userId),
+          actorUserId,
+          actorName: actorProfile?.display_name ?? null,
+          contractId: contract.id,
+          contractTitle: contract.title,
+        });
+      }
+    } catch (error) {
+      console.error('[ContractService] failed to send contract-completed notification:', error);
+    }
   }
 
   static async createMilestone(userId: string, input: { contract_id: string; title: string; description?: string; amount_cents: number; due_date: string; sequence_order: number }): Promise<Milestone> {
@@ -108,6 +307,11 @@ export class ContractService extends BaseService {
     if (contract.status !== 'pending_acceptance' && contract.status !== 'active') throw new ForbiddenError('Milestones cannot be added to this contract.');
     const { data: milestone, error } = await db.from('milestones').insert({ ...input, description: input.description || '', status: 'pending' }).select('*').single();
     if (error || !milestone) throw new AppError('Failed to create milestone.', 500, 'DB_INSERT_ERROR', error);
+    await this.notifyMilestoneCreated(
+      milestone as Milestone,
+      contract as unknown as { title?: string },
+      userId
+    );
     return milestone as Milestone;
   }
 
@@ -130,7 +334,92 @@ export class ContractService extends BaseService {
     if (next === 'disputed' && note) payload.revision_notes = note;
     const { data, error } = await db.from('milestones').update(payload).eq('id', id).select('*').single();
     if (error || !data) throw new AppError('Failed to transition milestone.', 500, 'DB_UPDATE_ERROR', error);
+
+    // Notify the counterparty. Routed through NotificationService so it is
+    // deduplicated on the milestone id, honours channel preferences, and is
+    // recorded in the delivery ledger. Swallowed on failure: the transition is
+    // already committed and a failed email must not undo an approval.
+    await this.notifyMilestoneTransition(
+      data as Milestone,
+      contract as unknown as { id: string; title?: string; client_id: string; consultant_id: string },
+      next,
+      userId,
+      note
+    );
+
     return data as Milestone;
+  }
+
+  /**
+   * Tell the other party that a milestone moved.
+   *
+   * Only `submitted` and `approved` notify, because those are the two that require
+   * the other party to act: a submission is a call to review, and an approval
+   * releases the consultant's money. `in_progress` and `funded` are already
+   * visible to both parties in the contract view and have their own payment
+   * notifications.
+   */
+  private static async notifyMilestoneTransition(
+    milestone: Milestone,
+    contract: { id: string; title?: string; client_id: string; consultant_id: string },
+    next: MilestoneStatus,
+    actorUserId: string,
+    note?: string
+  ): Promise<void> {
+    const isSubmission = next === 'submitted';
+    const isApproval = next === 'approved';
+    if (!isSubmission && !isApproval) return;
+
+    try {
+      // The recipient is the counterparty: the client is told about a submission,
+      // the consultant about an approval. Resolved from the contract's profile ids
+      // rather than taken from the caller, so a notification cannot be aimed at an
+      // arbitrary user.
+      const db = createAdminClient();
+      const recipientUserId = isSubmission
+        ? (await db.from('client_profiles').select('user_id').eq('id', contract.client_id).single())
+            .data?.user_id
+        : (
+            await db
+              .from('consultant_profiles')
+              .select('user_id')
+              .eq('id', contract.consultant_id)
+              .single()
+          ).data?.user_id;
+      if (!recipientUserId) return;
+
+      const { data: actorProfile } = await db
+        .from('profiles')
+        .select('display_name')
+        .eq('user_id', actorUserId)
+        .maybeSingle();
+
+      const input = {
+        recipientUserId: String(recipientUserId),
+        actorUserId,
+        actorName: actorProfile?.display_name ?? null,
+        milestoneId: milestone.id,
+        milestoneTitle: milestone.title,
+        contractId: milestone.contract_id,
+        ...(isSubmission ? {} : { notes: note ?? null }),
+      };
+
+      const emit = NotificationService.emitEvent;
+      if (isSubmission) {
+        await milestoneSubmitted(emit, {
+          ...input,
+          // The occurrence id is the transition's own `submitted_at`, which the
+          // update above just set. It is stable for this submission, so a
+          // reprocessed transition dedupes, and different for a resubmission
+          // after a dispute, so that one notifies as it should.
+          submissionId: milestone.submitted_at ?? `ts:${Date.now()}`,
+        });
+      } else {
+        await milestoneApproved(emit, input);
+      }
+    } catch (error) {
+      console.error('[ContractService] failed to send milestone notification:', error);
+    }
   }
 
   static async updateMilestone(id: string, userId: string, updates: Record<string, unknown>): Promise<Milestone> {

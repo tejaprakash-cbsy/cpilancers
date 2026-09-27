@@ -6,6 +6,8 @@
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { NotificationService } from '@/services/notification.service';
+import { messageReceived } from '@/lib/notifications/events';
 import type { 
   ConversationType,
   ConversationMemberRole,
@@ -332,15 +334,17 @@ export class MessagingService {
       // Get other participants to notify
       const otherMembers = await this.getConversationMembers(conversationId, user.id);
       
-      // Create notifications for other participants
+      // Create notifications for other participants. Keyed on the message id, so
+      // every message in a thread notifies exactly once and a redelivered send
+      // does not notify twice.
       for (const member of otherMembers) {
-        await this.createNotification(
-          member.user_id,
-          'message_received',
-          'New message received',
-          `${user.email || user.id} sent you a message`,
-          `/messages/${conversationId}`
-        );
+        await messageReceived(NotificationService.emitEvent, {
+          recipientUserId: member.user_id,
+          actorUserId: user.id,
+          actorName: user.email ?? null,
+          messageId: newMessage.id,
+          conversationId,
+        });
       }
       
       // If there are attachments, link them to the message
@@ -822,11 +826,22 @@ export class MessagingService {
   }
 
   /**
-   * Create a notification
+   * Create a notification.
+   *
+   * Retained as a generic escape hatch for callers that have no typed builder, and
+   * delegated to NotificationService so the write is deduplicated, preference-aware
+   * and recorded in the delivery ledger.
+   *
+   * `type` is now a validated `NotificationType` rather than a bare `string`. The
+   * previous signature accepted any string and cast it with `as any` on the way to
+   * the database, which moved the only real validation of this column from the
+   * database into a comment. A caller passing a misspelled type now fails at
+   * compile time and again at runtime, instead of producing a 22P02 from
+   * PostgREST that the old code logged and swallowed.
    */
   static async createNotification(
     userId: string,
-    type: string,
+    type: NotificationType,
     title: string,
     body: string,
     actionUrl?: string,
@@ -834,24 +849,18 @@ export class MessagingService {
     entityId?: string
   ): Promise<void> {
     try {
-      const supabase = await createClient();
-      
-      const { error } = await supabase
-        .from('notifications')
-        .insert({
-          user_id: userId,
-          type: type as any,
-          title,
-          body,
-          action_url: actionUrl,
-          entity_type: entityType,
-          entity_id: entityId,
-        });
-      
-      if (error) {
-        console.error('[DB Error - Create Notification]:', error);
-      }
+      await NotificationService.emit({
+        userId,
+        type,
+        title,
+        body,
+        actionUrl: actionUrl ?? null,
+        entityType: entityType ?? null,
+        entityId: entityId ?? null,
+      });
     } catch (error) {
+      // Never propagated: a notification must not fail the message send that
+      // triggered it. The message itself is already committed.
       console.error('[MessagingService.createNotification]:', error);
     }
   }
