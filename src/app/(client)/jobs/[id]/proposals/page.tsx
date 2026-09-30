@@ -55,6 +55,7 @@ export default function JobProposalsPage() {
       page: parseInt(params.page) || 1,
       limit: parseInt(params.limit) || 10,
     };
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFilters(initFilters as JobProposalsFilters);
     loadData();
   }, [jobId]);

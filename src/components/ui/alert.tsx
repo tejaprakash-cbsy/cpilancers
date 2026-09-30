@@ -19,17 +19,17 @@ const icons = {
 };
 
 const variants = {
-  info: 'bg-blue-50 border-blue-200 text-blue-900',
-  success: 'bg-emerald-50 border-emerald-200 text-emerald-900',
-  warning: 'bg-amber-50 border-amber-200 text-amber-900',
-  error: 'bg-red-50 border-red-200 text-red-900',
+  info: 'bg-[#eef1ff] border-[#dbe2ff] text-[#2445c7]',
+  success: 'bg-[#e8f6f1] border-[#c7ebdf] text-[#148267]',
+  warning: 'bg-[#fff3e5] border-[#f8d9b5] text-[#b85c12]',
+  error: 'bg-[#fef0ef] border-[#f4c7c3] text-[#b42318]',
 };
 
 const iconColors = {
-  info: 'text-blue-600',
-  success: 'text-emerald-600',
-  warning: 'text-amber-600',
-  error: 'text-red-600',
+  info: 'text-[#365cf5]',
+  success: 'text-[#148267]',
+  warning: 'text-[#b85c12]',
+  error: 'text-[#b42318]',
 };
 
 export const Alert: React.FC<AlertProps> = ({
@@ -47,7 +47,7 @@ export const Alert: React.FC<AlertProps> = ({
     <div
       role="alert"
       className={cn(
-        'relative rounded-lg border p-4 flex items-start gap-3',
+        'relative rounded-[10px] border p-4 flex items-start gap-3',
         variants[variant],
         className
       )}

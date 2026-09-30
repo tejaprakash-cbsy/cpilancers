@@ -4,3 +4,4 @@ export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 export { Input } from './input';
 export { Spinner, LoadingPage, LoadingCard, LoadingOverlay } from './loading';
 export { Alert, Toast } from './alert';
+export { DashboardShell, type DashboardNavItem, type DashboardShellProps } from '../layout/dashboard-shell';

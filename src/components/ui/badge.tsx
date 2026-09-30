@@ -18,14 +18,14 @@ export const Badge: React.FC<BadgeProps> = ({
   const baseStyles = 'inline-flex items-center font-medium rounded-full';
 
   const variants = {
-    default: 'bg-slate-100 text-slate-700 border border-slate-200',
-    sap: 'bg-blue-50 text-blue-800 border border-blue-200',
-    cpi: 'bg-sky-50 text-sky-800 border border-sky-200 font-semibold',
-    s4: 'bg-emerald-50 text-emerald-800 border border-emerald-200',
-    protocol: 'bg-purple-50 text-purple-800 border border-purple-200',
-    success: 'bg-green-50 text-green-700 border border-green-200',
-    warning: 'bg-amber-50 text-amber-800 border border-amber-200',
-    danger: 'bg-red-50 text-red-700 border border-red-200',
+    default: 'bg-[#f0f2f5] text-[#667085] border border-transparent',
+    sap: 'bg-[#eef1ff] text-[#2445c7] border border-transparent',
+    cpi: 'bg-[#eef1ff] text-[#2445c7] border border-transparent font-semibold',
+    s4: 'bg-[#e8f6f1] text-[#148267] border border-transparent',
+    protocol: 'bg-[#f0f2f5] text-[#667085] border border-transparent',
+    success: 'bg-[#e8f6f1] text-[#148267] border border-transparent',
+    warning: 'bg-[#fff3e5] text-[#b85c12] border border-transparent',
+    danger: 'bg-[#fef0ef] text-[#b42318] border border-transparent',
   };
 
   const sizes = {

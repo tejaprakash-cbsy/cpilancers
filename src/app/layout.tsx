@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
-import { Header } from '@/components/layout/header';
-import { Footer } from '@/components/layout/footer';
+import { AppChrome } from '@/components/layout/app-chrome';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -17,9 +16,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full">
       <body className="flex flex-col min-h-full antialiased bg-slate-50 text-slate-900">
-        <Header />
-        <main className="flex-1">{children}</main>
-        <Footer />
+        <AppChrome>{children}</AppChrome>
       </body>
     </html>
   );

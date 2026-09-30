@@ -27,8 +27,8 @@ export const Spinner: React.FC<SpinnerProps> = ({
       className={cn('flex flex-col items-center justify-center gap-2', className)}
       {...props}
     >
-      <Loader2 className={cn('animate-spin text-[#0a4d8c]', sizes[size])} />
-      {label && <p className="text-sm text-slate-600 animate-pulse">{label}</p>}
+      <Loader2 className={cn('animate-spin text-[#365cf5]', sizes[size])} />
+      {label && <p className="text-sm text-[#667085] animate-pulse">{label}</p>}
     </div>
   );
 };
@@ -39,12 +39,12 @@ interface LoadingPageProps {
 
 export const LoadingPage: React.FC<LoadingPageProps> = ({ message = 'Loading...' }) => {
   return (
-    <div className="flex items-center justify-center min-h-screen bg-slate-50">
+    <div className="flex items-center justify-center min-h-screen bg-[#f5f6f8]">
       <div className="text-center space-y-4">
         <Spinner size="xl" />
         <div className="space-y-2">
-          <p className="text-lg font-medium text-slate-900">{message}</p>
-          <p className="text-sm text-slate-500">Please wait a moment</p>
+          <p className="text-lg font-medium text-[#172033]">{message}</p>
+          <p className="text-sm text-[#667085]">Please wait a moment</p>
         </div>
       </div>
     </div>
@@ -53,10 +53,10 @@ export const LoadingPage: React.FC<LoadingPageProps> = ({ message = 'Loading...'
 
 export const LoadingCard: React.FC = () => {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-8">
+    <div className="bg-white rounded-[16px] border border-[#dde1e7] p-8">
       <div className="flex flex-col items-center justify-center gap-3">
         <Spinner size="lg" />
-        <p className="text-sm text-slate-600">Loading content...</p>
+        <p className="text-sm text-[#667085]">Loading content...</p>
       </div>
     </div>
   );
@@ -70,10 +70,10 @@ export const LoadingOverlay: React.FC<{ isOpen: boolean; message?: string }> = (
 
   return (
     <div className="fixed inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-center justify-center">
-      <div className="bg-white rounded-xl shadow-xl p-8 max-w-sm w-full mx-4">
+      <div className="bg-white rounded-[16px] shadow-xl p-8 max-w-sm w-full mx-4">
         <div className="flex flex-col items-center gap-4">
           <Spinner size="lg" />
-          <p className="text-base font-medium text-slate-900">{message}</p>
+          <p className="text-base font-medium text-[#172033]">{message}</p>
         </div>
       </div>
     </div>

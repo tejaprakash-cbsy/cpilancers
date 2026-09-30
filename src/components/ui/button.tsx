@@ -28,21 +28,21 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     ref
   ) => {
     const baseStyles =
-      'inline-flex items-center justify-center font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none rounded-lg cursor-pointer';
+      'inline-flex items-center justify-center font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none rounded-[10px] cursor-pointer';
 
     const variants = {
       primary:
-        'bg-[#0a4d8c] text-white hover:bg-[#083c6d] active:bg-[#062d52] focus-visible:ring-[#0a4d8c] shadow-sm',
+        'bg-[#365cf5] text-white hover:bg-[#2445c7] active:bg-[#1d39a8] focus-visible:ring-[#365cf5]',
       secondary:
-        'bg-[#0284c7] text-white hover:bg-[#0369a1] active:bg-[#075985] focus-visible:ring-[#0284c7] shadow-sm',
+        'bg-[#eef1ff] text-[#2445c7] hover:bg-[#e1e6ff] active:bg-[#d5ddff] focus-visible:ring-[#365cf5]',
       outline:
-        'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 active:bg-slate-100 focus-visible:ring-slate-400',
+        'border border-[#dde1e7] bg-white text-[#172033] hover:bg-[#f5f6f8] active:bg-[#eef1ff] focus-visible:ring-[#365cf5]',
       ghost:
-        'text-slate-700 hover:bg-slate-100 active:bg-slate-200 focus-visible:ring-slate-400',
+        'text-[#667085] hover:bg-[#f5f6f8] hover:text-[#172033] active:bg-[#eef1ff] focus-visible:ring-[#365cf5]',
       danger:
-        'bg-red-600 text-white hover:bg-red-700 active:bg-red-800 focus-visible:ring-red-500 shadow-sm',
+        'bg-[#b42318] text-white hover:bg-[#912018] active:bg-[#7a1a13] focus-visible:ring-[#b42318]',
       success:
-        'bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 focus-visible:ring-emerald-500 shadow-sm',
+        'bg-[#148267] text-white hover:bg-[#0f6b55] active:bg-[#0b5947] focus-visible:ring-[#148267]',
     };
 
     const sizes = {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { ClientAuthService as AuthService, ClientJobService as JobService } from '@/services/client-api.service';
 import ProposalForm from '@/components/proposals/proposal-form';
 import { cn } from '@/lib/utils';
@@ -51,6 +52,7 @@ export default function ProposalNewPage() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadJobAndProfile();
   }, [jobId]);
 
@@ -88,12 +90,12 @@ export default function ProposalNewPage() {
                 The job you&rsquo;re looking for may not exist or is no longer available.
               </p>
               <div className="mt-4">
-                <a
+                <Link
                   href="/jobs"
                   className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200"
                 >
                   Go to Job Listings
-                </a>
+                </Link>
               </div>
             </div>
           </div>

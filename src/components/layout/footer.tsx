@@ -1,21 +1,18 @@
 import * as React from 'react';
 import Link from 'next/link';
-import { Layers } from 'lucide-react';
 
 export const Footer: React.FC = () => {
   return (
-    <footer className="border-t border-slate-200 bg-white text-slate-600 text-sm">
+    <footer className="border-t border-[#dde1e7] bg-white text-[#667085] text-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Brand Col */}
           <div className="space-y-4">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-[#0a4d8c] flex items-center justify-center text-white font-bold text-sm">
-                <Layers className="w-4 h-4" />
+              <div className="w-8 h-8 rounded-[10px] bg-[#365cf5] flex items-center justify-center text-white font-extrabold text-sm">
+                <span aria-hidden="true">L</span>
               </div>
-              <span className="font-bold text-base text-slate-900">
-                CPI <span className="text-[#0284c7]">Lancers</span>
-              </span>
+              <span className="text-[18px] text-[#172033]">Lancers</span>
             </div>
             <p className="text-xs text-slate-500 leading-relaxed">
               The premier B2B freelance marketplace dedicated to SAP Cloud Integration (CPI)

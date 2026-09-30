@@ -1,258 +1,101 @@
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import {
-  Briefcase,
-  Users,
-  Shield,
+  ArrowRight,
+  BadgeCheck,
+  Check,
+  ChevronRight,
+  CircleCheck,
+  Clock3,
+  Search,
+  ShieldCheck,
+  Star,
   Zap,
-  Code,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
+
+const expertise = [
+  ['Design & Creative', 'Brand, product, and visual systems'],
+  ['Development', 'Web, mobile, and software delivery'],
+  ['Data & AI', 'Analytics, automation, and intelligence'],
+  ['Marketing', 'Growth, content, and performance'],
+  ['Consulting', 'Strategy, operations, and finance'],
+  ['Writing & Translation', 'Words that move work forward'],
+  ['Support & Operations', 'Reliable day-to-day execution'],
+  ['Legal & Finance', 'Specialists for the details'],
+];
+
+const talent = [
+  { image: '/landing-assets/landing-06.jpeg', name: 'Maya Chen', role: 'Product designer', rating: '4.9', rate: '$74/hr', tags: ['Figma', 'Design systems'] },
+  { image: '/landing-assets/landing-07.jpeg', name: 'Emil Mensah', role: 'Data engineer', rating: '4.8', rate: '$82/hr', tags: ['Python', 'Data platforms'] },
+  { image: '/landing-assets/landing-08.jpeg', name: 'Lucía Navarro', role: 'Brand strategist', rating: '5.0', rate: '$68/hr', tags: ['Brand', 'Go-to-market'] },
+];
+
+const projects = [
+  ['Lead product designer for climate analytics platform', 'Design & Creative', '3 weeks ago', '12 proposals'],
+  ['Senior React engineer for fintech dashboard', 'Development', '1 day ago', '8 proposals'],
+  ['Lifecycle marketing audit and growth roadmap', 'Marketing', '5 days ago', '16 proposals'],
+];
+
+const process = [
+  ['Share the goal', 'Tell us what you need and the kind of expertise that will make it happen.'],
+  ['Meet strong matches', 'Review thoughtful proposals from people who fit your brief.'],
+  ['Work with confidence', 'Clear terms, protected payments, and support when you need it.'],
+];
 
 export default function HomePage() {
   return (
-    <div className="flex flex-col">
-      {/* Hero Section */}
-      <section className="bg-gradient-to-br from-[#0a4d8c] via-[#0a4d8c] to-[#0369a1] text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 sm:py-24">
-          <div className="max-w-3xl">
-            <Badge variant="cpi" className="mb-6 bg-white/10 text-white border-white/20">
-              Specialized SAP CPI & Integration Suite Marketplace
-            </Badge>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6">
-              Connect with Elite{' '}
-              <span className="text-[#7dd3fc]">SAP Integration</span> Consultants
+    <div className="bg-[#f5f6f8] text-[#172033]">
+      <section className="bg-white">
+        <div className="mx-auto grid max-w-[1280px] items-center gap-12 px-6 py-16 sm:px-10 lg:grid-cols-[1fr_1.05fr] lg:gap-20 lg:py-[76px]">
+          <div className="max-w-[560px]">
+            <Badge variant="sap" className="mb-5">The modern talent marketplace</Badge>
+            <h1 className="max-w-[560px] text-[42px] font-normal leading-[1.08] tracking-[-1.5px] sm:text-[56px]">
+              Exceptional work.<br />
+              <span className="text-[#365cf5]">Without borders.</span>
             </h1>
-            <p className="text-lg sm:text-xl text-blue-100 mb-8 leading-relaxed">
-              The premier B2B freelance platform for hiring verified SAP Cloud Integration (CPI),
-              Integration Suite, and enterprise middleware specialists. Secure escrow, milestone
-              protection, and direct payouts.
+            <p className="mt-6 max-w-[500px] text-[16px] leading-7 text-[#667085]">
+              Lancers connects ambitious companies with proven independent professionals who bring clarity, craft, and momentum to every project.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <Link href="/jobs">
-                <Button
-                  size="lg"
-                  variant="secondary"
-                  rightIcon={<Briefcase className="w-5 h-5" />}
-                  className="w-full sm:w-auto"
-                >
-                  I need an SAP integration specialist
-                </Button>
-              </Link>
-              <Link href="/consultants">
-                <Button
-                  size="lg"
-                  variant="outline"
-                  rightIcon={<Users className="w-5 h-5" />}
-                  className="w-full sm:w-auto bg-white/10 text-white border-white/20 hover:bg-white/20"
-                >
-                  Browse SAP CPI consultants
-                </Button>
-              </Link>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Link href="/register"><Button size="lg" rightIcon={<ArrowRight className="h-4 w-4" />}>Find your next hire</Button></Link>
+              <Link href="/jobs"><Button size="lg" variant="outline" leftIcon={<Search className="h-4 w-4" />}>Explore projects</Button></Link>
+            </div>
+            <div className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-[11px] text-[#667085]">
+              <span className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-[#148267]" /> Vetted professionals</span>
+              <span className="flex items-center gap-1.5"><CircleCheck className="h-3.5 w-3.5 text-[#148267]" /> Secure payments</span>
+              <span className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5 text-[#148267]" /> Flexible terms</span>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* Stats Bar */}
-      <section className="border-b border-slate-200 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-            <div>
-              <div className="text-3xl font-bold text-[#0a4d8c]">300+</div>
-              <div className="text-sm text-slate-600 mt-1">Verified SAP Consultants</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-[#0a4d8c]">$2.5M+</div>
-              <div className="text-sm text-slate-600 mt-1">Contracts Completed</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-[#0a4d8c]">4.8/5</div>
-              <div className="text-sm text-slate-600 mt-1">Average Rating</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-[#0a4d8c]">98%</div>
-              <div className="text-sm text-slate-600 mt-1">Project Success Rate</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Value Props */}
-      <section className="py-16 sm:py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-4">
-              Why CPI Lancers?
-            </h2>
-            <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-              The only marketplace purpose-built for SAP integration specialists and enterprise
-              clients
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            <Card>
-              <CardHeader>
-                <Shield className="w-10 h-10 text-[#0a4d8c] mb-3" />
-                <CardTitle>Verified SAP Expertise</CardTitle>
-                <CardDescription>
-                  All consultants are manually verified with SAP certification validation, portfolio
-                  review, and technical vetting.
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <Zap className="w-10 h-10 text-[#0a4d8c] mb-3" />
-                <CardTitle>Escrow-Protected Milestones</CardTitle>
-                <CardDescription>
-                  Payments held in secure escrow and released upon milestone approval. Full dispute
-                  resolution support.
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <Code className="w-10 h-10 text-[#0a4d8c] mb-3" />
-                <CardTitle>SAP-Native Workflow</CardTitle>
-                <CardDescription>
-                  Job postings structured around SAP systems, protocols (IDoc, OData, SOAP), and
-                  integration patterns.
-                </CardDescription>
-              </CardHeader>
+          <div className="relative min-h-[390px] overflow-hidden rounded-[16px] bg-[#e7e9ee] sm:min-h-[500px]">
+            <img src="/landing-assets/landing-01.png" alt="A team collaborating around a table" className="absolute inset-0 h-full w-full object-cover" />
+            <Card className="absolute bottom-5 left-5 right-5 flex items-center gap-3 border-white/80 bg-white/95 p-3 shadow-lg backdrop-blur sm:left-8 sm:right-8">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#eef1ff] text-xs font-bold text-[#365cf5]">AM</div>
+              <div className="min-w-0 flex-1"><p className="text-xs font-semibold">Amina Mbaye</p><p className="truncate text-[11px] text-[#667085]">Senior product designer</p></div>
+              <Badge variant="success" size="sm">Available</Badge>
             </Card>
           </div>
         </div>
       </section>
 
-      {/* SAP Technologies */}
-      <section className="py-16 bg-slate-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-4">
-              SAP Integration Ecosystem
-            </h2>
-            <p className="text-lg text-slate-600">
-              Expertise across the entire SAP integration technology stack
-            </p>
-          </div>
+      <div className="bg-[#111827] text-white"><div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-4 px-6 py-4 text-[11px] sm:px-10"><span>Trusted by teams building what comes next</span><div className="flex flex-wrap gap-6 text-white/60"><span>Northstar</span><span>vertex</span><span>MONUMENT</span><span>daylight</span><span>RIVET</span></div></div></div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            {[
-              'SAP CPI',
-              'API Management',
-              'Event Mesh',
-              'S/4HANA',
-              'SuccessFactors',
-              'Ariba',
-              'OData V2/V4',
-              'IDoc',
-              'SOAP & REST',
-              'Groovy Scripting',
-            ].map((tech) => (
-              <div
-                key={tech}
-                className="bg-white rounded-lg p-4 text-center font-medium text-sm text-slate-700 border border-slate-200 hover:border-[#0a4d8c] hover:shadow-sm transition-all"
-              >
-                {tech}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <section className="mx-auto max-w-[1280px] px-6 py-16 sm:px-10 lg:py-20"><div className="mb-8 flex items-end justify-between gap-5"><div><p className="text-[11px] font-semibold uppercase tracking-[1.5px] text-[#365cf5]">Expertise</p><h2 className="mt-2 text-[30px] font-normal">Expertise for every stage of growth</h2><p className="mt-2 text-sm text-[#667085]">Whatever you are building, find the right specialist to move it forward.</p></div><Link href="/consultants" className="hidden items-center gap-1 text-xs font-semibold text-[#365cf5] sm:flex">Explore talent <ChevronRight className="h-4 w-4" /></Link></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{expertise.map(([title, description]) => <Card key={title} className="group p-5 transition hover:-translate-y-0.5 hover:border-[#365cf5]/40 hover:shadow-sm"><div className="mb-7 flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#eef1ff] text-[#365cf5]"><Zap className="h-4 w-4" /></div><h3 className="text-sm font-semibold">{title}</h3><p className="mt-1 text-[11px] leading-5 text-[#667085]">{description}</p><span className="mt-4 block text-xs text-[#365cf5] opacity-0 transition group-hover:opacity-100">View specialists <ArrowRight className="ml-1 inline h-3 w-3" /></span></Card>)}</div></section>
 
-      {/* How It Works */}
-      <section className="py-16 sm:py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-4">
-              How It Works
-            </h2>
-          </div>
+      <section className="border-y border-[#dde1e7] bg-white"><div className="mx-auto max-w-[1280px] px-6 py-16 sm:px-10 lg:py-20"><div className="mb-8 flex items-end justify-between gap-5"><div><p className="text-[11px] font-semibold uppercase tracking-[1.5px] text-[#365cf5]">Talent</p><h2 className="mt-2 text-[30px] font-normal">Talent with the receipts</h2><p className="mt-2 text-sm text-[#667085]">Meet independent professionals with the experience to make an immediate impact.</p></div><Link href="/consultants" className="hidden items-center gap-1 text-xs font-semibold text-[#365cf5] sm:flex">View all talent <ChevronRight className="h-4 w-4" /></Link></div><div className="grid gap-4 lg:grid-cols-3">{talent.map((person) => <Card key={person.name} className="overflow-hidden p-0"><div className="flex gap-4 p-5"><img src={person.image} alt={person.name} className="h-14 w-14 rounded-full object-cover" /><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><h3 className="truncate text-sm font-semibold">{person.name}</h3><span className="text-xs font-medium">{person.rate}</span></div><p className="mt-1 text-xs text-[#667085]">{person.role}</p><p className="mt-2 flex items-center gap-1 text-[11px]"><Star className="h-3.5 w-3.5 fill-[#f6b44b] text-[#f6b44b]" /> {person.rating} <span className="text-[#98a2b3]">· Verified</span></p></div></div><div className="flex gap-2 px-5 pb-4">{person.tags.map((tag) => <Badge key={tag} variant="default" size="sm">{tag}</Badge>)}</div><div className="flex gap-2 border-t border-[#dde1e7] p-4"><Link href="/consultants" className="flex-1"><Button variant="outline" size="sm" className="w-full">View profile</Button></Link><Link href="/register" className="flex-1"><Button size="sm" className="w-full">Start a conversation</Button></Link></div></Card>)}</div></div></section>
 
-          <div className="grid md:grid-cols-2 gap-12">
-            {/* For Clients */}
-            <div>
-              <h3 className="text-xl font-semibold text-slate-900 mb-6 flex items-center gap-2">
-                <Briefcase className="w-6 h-6 text-[#0a4d8c]" />
-                For Clients
-              </h3>
-              <div className="space-y-4">
-                {[
-                  'Post your SAP integration requirement with technical details',
-                  'Receive proposals from verified CPI consultants within 24-48 hours',
-                  'Review consultant portfolios, certifications, and client reviews',
-                  'Select consultant and establish milestone-based contract',
-                  'Funds held in escrow, released upon milestone approval',
-                ].map((step, idx) => (
-                  <div key={idx} className="flex gap-3">
-                    <div className="flex-shrink-0 w-6 h-6 rounded-full bg-[#0a4d8c] text-white flex items-center justify-center text-sm font-bold">
-                      {idx + 1}
-                    </div>
-                    <p className="text-slate-700">{step}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+      <section className="mx-auto max-w-[1280px] px-6 py-16 sm:px-10 lg:py-20"><div className="grid gap-8 lg:grid-cols-[0.8fr_1.4fr]"><div><p className="text-[11px] font-semibold uppercase tracking-[1.5px] text-[#365cf5]">Projects</p><h2 className="mt-2 max-w-[340px] text-[30px] font-normal">Projects worth your best work</h2><p className="mt-3 max-w-[320px] text-sm leading-6 text-[#667085]">Find thoughtful briefs from teams who value quality, clarity, and the people doing the work.</p><Link href="/jobs" className="mt-6 inline-block"><Button size="sm">Browse open jobs <ArrowRight className="ml-1 h-4 w-4" /></Button></Link></div><div className="space-y-3">{projects.map(([title, category, age, proposals]) => <Link key={title} href="/jobs" className="block"><Card className="p-5 transition hover:border-[#365cf5]/50 hover:shadow-sm"><div className="flex items-start justify-between gap-4"><div><h3 className="text-sm font-semibold">{title}</h3><p className="mt-2 text-[11px] text-[#667085]">{category} <span className="mx-1">·</span> {age}</p></div><ArrowRight className="h-4 w-4 shrink-0 text-[#667085]" /></div><div className="mt-4 flex items-center justify-between text-[11px] text-[#667085]"><span>{proposals}</span><span className="flex items-center gap-1 text-[#148267]"><BadgeCheck className="h-3.5 w-3.5" /> Verified client</span></div></Card></Link>)}</div></div></section>
 
-            {/* For Consultants */}
-            <div>
-              <h3 className="text-xl font-semibold text-slate-900 mb-6 flex items-center gap-2">
-                <Users className="w-6 h-6 text-[#0a4d8c]" />
-                For Consultants
-              </h3>
-              <div className="space-y-4">
-                {[
-                  'Create comprehensive SAP profile with certifications and portfolio',
-                  'Browse integration opportunities matching your expertise',
-                  'Submit proposals with technical approach and pricing',
-                  'Get hired and deliver milestone-based deliverables',
-                  'Receive direct payouts upon client approval (5-10% platform fee)',
-                ].map((step, idx) => (
-                  <div key={idx} className="flex gap-3">
-                    <div className="flex-shrink-0 w-6 h-6 rounded-full bg-[#0284c7] text-white flex items-center justify-center text-sm font-bold">
-                      {idx + 1}
-                    </div>
-                    <p className="text-slate-700">{step}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      <section className="border-y border-[#dde1e7] bg-white"><div className="mx-auto max-w-[1280px] px-6 py-16 sm:px-10 lg:py-20"><div className="mx-auto max-w-[500px] text-center"><p className="text-[11px] font-semibold uppercase tracking-[1.5px] text-[#365cf5]">How it works</p><h2 className="mt-2 text-[30px] font-normal">A clearer path from search to success</h2><p className="mt-3 text-sm text-[#667085]">Simple by design. Serious about the outcome.</p></div><div className="mt-10 grid gap-4 lg:grid-cols-3">{process.map(([title, description], index) => <div key={title} className={`rounded-[16px] p-6 ${index === 1 ? 'bg-[#111827] text-white' : 'bg-[#f5f6f8]'}`}><div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${index === 1 ? 'bg-[#365cf5] text-white' : 'bg-[#eef1ff] text-[#365cf5]'}`}>{index + 1}</div><h3 className="mt-8 text-sm font-semibold">{title}</h3><p className={`mt-2 text-xs leading-5 ${index === 1 ? 'text-white/60' : 'text-[#667085]'}`}>{description}</p></div>)}</div></div></section>
 
-      {/* CTA Section */}
-      <section className="bg-gradient-to-br from-slate-900 to-slate-800 text-white py-16">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-            Ready to Build Your Integration?
-          </h2>
-          <p className="text-lg text-slate-300 mb-8">
-            Join the premier SAP integration talent marketplace today
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/register">
-              <Button size="lg" variant="secondary" className="w-full sm:w-auto">
-                Join as Client
-              </Button>
-            </Link>
-            <Link href="/register?role=consultant">
-              <Button
-                size="lg"
-                variant="outline"
-                className="w-full sm:w-auto bg-white/10 text-white border-white/20 hover:bg-white/20"
-              >
-                Join as Consultant
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
+      <section className="mx-auto max-w-[1280px] px-6 py-16 sm:px-10 lg:py-20"><div className="grid items-center gap-10 lg:grid-cols-[0.8fr_1.2fr]"><div className="overflow-hidden rounded-[16px]"><img src="/landing-assets/landing-09.png" alt="Professional working from home" className="aspect-square h-full w-full object-cover" /></div><div><p className="text-[11px] font-semibold uppercase tracking-[1.5px] text-[#365cf5]">Built for trust</p><h2 className="mt-2 text-[30px] font-normal">Good work needs a strong foundation.</h2><p className="mt-4 max-w-[490px] text-sm leading-6 text-[#667085]">The right relationship makes ambitious work feel possible. Lancers gives every project the structure and confidence to do its best work.</p><ul className="mt-7 space-y-4 text-sm">{['Vetted, verified professionals', 'Protected payments and milestones', 'Transparent terms and communication', 'Support when the work gets complex'].map((item) => <li key={item} className="flex items-center gap-3"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#e8f6f1] text-[#148267]"><Check className="h-3 w-3" /></span>{item}</li>)}</ul></div></div></section>
+
+      <section className="bg-[#365cf5] text-white"><div className="mx-auto grid max-w-[1280px] grid-cols-2 gap-6 px-6 py-7 sm:grid-cols-4 sm:px-10"><div><p className="text-2xl font-normal">32k+</p><p className="mt-1 text-[11px] text-white/70">Professionals</p></div><div><p className="text-2xl font-normal">94%</p><p className="mt-1 text-[11px] text-white/70">Match satisfaction</p></div><div><p className="text-2xl font-normal">42</p><p className="mt-1 text-[11px] text-white/70">Countries connected</p></div><div><p className="text-2xl font-normal">4.8/5</p><p className="mt-1 text-[11px] text-white/70">Average rating</p></div></div></section>
+
+      <section className="bg-white"><div className="mx-auto max-w-[1280px] px-6 py-16 sm:px-10 lg:py-20"><div className="mb-8 text-center"><h2 className="text-[30px] font-normal">Trusted where the work gets serious</h2><p className="mt-2 text-sm text-[#667085]">A few words from the people building with Lancers.</p></div><div className="grid gap-4 lg:grid-cols-3">{[['“Lancers gave us a shortlist that felt considered, not just fast. We found the right person in days.”', 'Head of product, Northstar'], ['“The quality of the work and the quality of the communication are both unusually high.”', 'Founder, Vertex'], ['“Clear terms, strong talent, and a process that respects everyone’s time.”', 'COO, Monument']].map(([quote, author]) => <Card key={author} className="p-6"><div className="flex gap-1 text-[#f6b44b]">{[1, 2, 3, 4, 5].map((star) => <Star key={star} className="h-3.5 w-3.5 fill-current" />)}</div><p className="mt-5 text-sm leading-6 text-[#172033]">{quote}</p><p className="mt-6 text-[11px] text-[#667085]">{author}</p></Card>)}</div></div></section>
+
+      <section className="bg-[#111827] text-white"><div className="mx-auto max-w-[1280px] px-6 py-14 sm:px-10"><div className="flex flex-col justify-between gap-7 md:flex-row md:items-end"><div><h2 className="max-w-[400px] text-[30px] font-normal">Your next great working relationship starts here.</h2><p className="mt-3 text-sm text-white/60">Find the people and projects that make the work worth doing.</p></div><div className="flex gap-3"><Link href="/register"><Button size="sm">Get started</Button></Link><Link href="/jobs"><Button size="sm" variant="outline" className="border-white/20 bg-transparent text-white hover:bg-white/10">Explore jobs</Button></Link></div></div><div className="mt-16 grid gap-8 border-t border-white/10 pt-8 sm:grid-cols-4"><div><div className="flex items-center gap-2"><span className="flex h-7 w-7 items-center justify-center rounded-[8px] bg-white text-xs font-extrabold text-[#365cf5]">L</span><span className="text-sm">Lancers</span></div><p className="mt-3 max-w-[220px] text-[11px] leading-5 text-white/45">A better way to find the people and projects that move work forward.</p></div><div><p className="text-xs font-semibold">For clients</p><div className="mt-3 space-y-2 text-[11px] text-white/55"><Link className="block hover:text-white" href="/consultants">Find talent</Link><Link className="block hover:text-white" href="/jobs/create">Post a project</Link><Link className="block hover:text-white" href="/how-it-works">How it works</Link></div></div><div><p className="text-xs font-semibold">For freelancers</p><div className="mt-3 space-y-2 text-[11px] text-white/55"><Link className="block hover:text-white" href="/jobs">Find work</Link><Link className="block hover:text-white" href="/register">Create a profile</Link><Link className="block hover:text-white" href="/how-it-works">Resources</Link></div></div><div><p className="text-xs font-semibold">Company</p><div className="mt-3 space-y-2 text-[11px] text-white/55"><Link className="block hover:text-white" href="/">About Lancers</Link><Link className="block hover:text-white" href="/pricing">Pricing</Link><Link className="block hover:text-white" href="/">Contact</Link></div></div></div></div></section>
     </div>
   );
 }
