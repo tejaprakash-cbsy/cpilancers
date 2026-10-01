@@ -1,3 +1,4 @@
+
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -230,6 +231,74 @@ describe('job-proposals ownership decision', () => {
   });
 });
 
+describe('J: PostgREST query construction (regression)', () => {
+  /**
+   * DEFECT 1a -- malformed embedded-table ordering.
+   *
+   * `getUserConversations` ordered by 'conversations.last_message_at' WITH
+   * `foreignTable: 'conversations'`. supabase-js prefixed the embedded table a
+   * second time, emitting `conversations.conversations.last_message_at.desc`,
+   * which PostgREST rejected with PGRST100 and the endpoint answered 500 for
+   * every caller.
+   */
+  const buildOrderClause = (
+    column: string,
+    opts: { foreignTable?: string; referencedTable?: string; ascending: boolean }
+  ): string => {
+    // supabase-js prefixes foreignTable/referencedTable onto the column and
+    // appends the direction. This is the string PostgREST parses.
+    const table = opts.foreignTable ?? opts.referencedTable;
+    const qualified = table ? `${table}.${column}` : column;
+    return `${qualified}.${opts.ascending ? 'asc' : 'desc'}`;
+  };
+
+  it('the bare column with foreignTable does NOT double-qualify', () => {
+    expect(buildOrderClause('last_message_at', { foreignTable: 'conversations', ascending: false }))
+      .toBe('conversations.last_message_at.desc');
+  });
+
+  it('the old prefixed column produced a triple-qualified clause (the bug)', () => {
+    expect(buildOrderClause('conversations.last_message_at', { foreignTable: 'conversations', ascending: false }))
+      .toBe('conversations.conversations.last_message_at.desc');
+  });
+
+  it('a referencedTable form produces an identical, valid clause', () => {
+    expect(buildOrderClause('last_message_at', { referencedTable: 'conversations', ascending: false }))
+      .toBe('conversations.last_message_at.desc');
+  });
+
+  it('the service orders by the BARE column, never the prefixed one', async () => {
+    const { codeOnly } = await import('./read-source');
+    const src = await codeOnly('src/services/messaging.service.ts');
+    // Comments are stripped first: the explanatory note above the fixed call
+    // quotes the old, broken column name on purpose.
+    expect(src).not.toMatch(/order\(\s*'conversations\./);
+    expect(src).toContain(".order('last_message_at', { foreignTable: 'conversations', ascending: false })");
+  });
+
+  /**
+   * DEFECT 1b -- invalid embed syntax.
+   *
+   * `profiles:first_name` reads as "column first_name ON TABLE profiles", but
+   * `profiles` is a RELATED table, not a column. PostgREST aliased the related
+   * `users` table as `users_1`/`users_2` and failed with
+   * "column users_2.first_name does not exist" (42703), 500ing both
+   * getConversationById and getMessages. The correct form nests the relation.
+   */
+  it('the service no longer uses the invalid profiles:<col> embed form', async () => {
+    const { codeOnly } = await import('./read-source');
+    const src = await codeOnly('src/services/messaging.service.ts');
+    expect(src).not.toMatch(/profiles:first_name/);
+    expect(src).toContain('profiles(first_name, last_name, display_name, avatar_url)');
+  });
+
+  it('the conversation embed selects users.role as a column, not via profiles', async () => {
+    const { codeOnly } = await import('./read-source');
+    const src = await codeOnly('src/services/messaging.service.ts');
+    expect(src).toContain('users:users!inner(id, email, role, profiles(');
+  });
+});
+
 describe('conversation-list payload shape', () => {
   /**
    * `getUserConversations` returns FLAT `ConversationListItem[]`. It does not
@@ -299,5 +368,94 @@ describe('conversation-list payload shape', () => {
 
     expect(label).toBe('Conversation 5c1d2e3f');
     expect(label).not.toContain('undefined');
+  });
+});
+describe('K: jobs query construction omits undefined filters', () => {
+  /**
+   * DEFECT 2 -- `/api/jobs` returned HTTP 400 because unset filters were
+   * serialised as the literal string "undefined":
+   *   ?search=undefined&sapProducts=undefined&...
+   */
+  const buildQuery = (params: Record<string, unknown>): string => {
+    const search = new URLSearchParams();
+    for (const key of Object.keys(params)) {
+      const value = params[key];
+      if (value === undefined || value === null) continue;
+      if (Array.isArray(value)) {
+        if (value.length === 0) continue;
+        search.set(key, value.map((v) => String(v)).join(','));
+        continue;
+      }
+      search.set(key, String(value));
+    }
+    return search.toString();
+  };
+
+  it('omits undefined filters entirely (no "undefined" anywhere)', () => {
+    const q = buildQuery({
+      search: undefined,
+      sapProducts: undefined,
+      budgetMin: undefined,
+      budgetType: undefined,
+      status: undefined,
+      page: 1,
+      limit: 10,
+    });
+
+    expect(q).not.toContain('undefined');
+    expect(new URLSearchParams(q).get('search')).toBeNull();
+    expect(new URLSearchParams(q).get('page')).toBe('1');
+    expect(new URLSearchParams(q).get('limit')).toBe('10');
+  });
+
+  it('reproduces the old broken behaviour for contrast', () => {
+    const broken = new URLSearchParams({
+      search: 'undefined',
+      sapProducts: 'undefined',
+    } as unknown as Record<string, string>).toString();
+    expect(broken).toContain('undefined');
+  });
+
+  it('a single filter is applied', () => {
+    const p = new URLSearchParams(buildQuery({ search: 'SAP CPI', status: undefined }));
+    expect(p.get('search')).toBe('SAP CPI');
+    expect(p.get('status')).toBeNull();
+  });
+
+  it('multiple filters are all applied', () => {
+    const p = new URLSearchParams(buildQuery({
+      search: 'SAP',
+      budgetMin: 500000,
+      budgetType: 'fixed_price',
+      page: 2,
+    }));
+    expect(p.get('search')).toBe('SAP');
+    expect(p.get('budgetMin')).toBe('500000');
+    expect(p.get('budgetType')).toBe('fixed_price');
+    expect(p.get('page')).toBe('2');
+  });
+
+  it('array filters join with commas and empty arrays are dropped', () => {
+    expect(new URLSearchParams(buildQuery({ status: ['open', 'in_review'] })).get('status'))
+      .toBe('open,in_review');
+    expect(new URLSearchParams(buildQuery({ status: [] })).has('status')).toBe(false);
+  });
+
+  it('preserves meaningful falsy values that are not undefined', () => {
+    const p = new URLSearchParams(buildQuery({ budgetMin: 0, search: '' }));
+    expect(p.get('budgetMin')).toBe('0');
+    expect(p.get('search')).toBe('');
+  });
+
+  it('clearing all filters yields only the supplied defaults', () => {
+    expect(buildQuery({ search: undefined, status: undefined, page: 1, limit: 10 }))
+      .toBe('page=1&limit=10');
+  });
+
+  it('the shipped service uses this builder rather than raw URLSearchParams', async () => {
+    const { codeOnly } = await import('./read-source');
+    const src = await codeOnly('src/services/client-api.service.ts');
+    expect(src).not.toMatch(/new URLSearchParams\(options as/);
+    expect(src).toContain('function buildQueryString(');
   });
 });

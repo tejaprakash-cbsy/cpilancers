@@ -96,29 +96,60 @@ export interface MessageAttachment {
 }
 
 /**
- * The public profile fields joined onto a user. PostgREST returns a to-one embed
- * as an object, but supabase-js types it as an array; both shapes are declared
- * and normalised by `readUserRow` so the roster view does not have to care.
+ * The public profile fields joined onto a user.
+ *
+ * `profiles` is the RAW embed shape as PostgREST returns it for a to-one
+ * relation: a single-element ARRAY. `readUserRow` normalises it to a single
+ * object (or null), which is what `JoinedUserProfile` declares and what every
+ * consumer reads.
  */
+export type JoinedProfilesEmbed =
+  | { first_name: string | null; last_name: string | null; display_name: string | null; avatar_url: string | null }
+  | { first_name: string | null; last_name: string | null; display_name: string | null; avatar_url: string | null }[]
+  | null;
+
 export interface JoinedUserProfile {
   id: string;
   email: string;
+  /** Normalised by `readUserRow`: always an object or null, never an array. */
   profiles: { first_name: string | null; last_name: string | null; display_name: string | null; avatar_url: string | null } | null;
 }
 
-/** A `conversation_members` row with the joined user, for the roster view. */
+/**
+ * A `conversation_members` row with the joined user, for the roster view.
+ *
+ * `users` carries the RAW embed, in which `profiles` is still an array; that is
+ * why this is distinct from `JoinedUserProfile`.
+ */
 export interface ConversationMemberRowWithUser {
   user_id: string;
   member_role: ConversationMemberRole;
   last_read_at: string | null;
   joined_at: string;
-  users: (JoinedUserProfile | JoinedUserProfile[]) | null;
+  users: {
+    id: string;
+    email: string;
+    profiles: JoinedProfilesEmbed;
+  } | { id: string; email: string; profiles: JoinedProfilesEmbed }[] | null;
 }
 
 /** Normalise a to-one embed that may arrive as an object or a one-element array. */
 function readUserRow(embed: ConversationMemberRowWithUser['users']): JoinedUserProfile | null {
   if (!embed) return null;
-  return Array.isArray(embed) ? (embed[0] ?? null) : embed;
+  const base = Array.isArray(embed) ? embed[0] : embed;
+  if (!base) return null;
+  return {
+    id: base.id,
+    email: base.email,
+    // PostgREST returns an embedded to-one relation as a single-element ARRAY
+    // when the select is written `profiles(first_name, ...)`, so the nested
+    // embed needs the same normalisation as the `users` embed above. Previously
+    // the select used the invalid `profiles:first_name` form, so this never
+    // round-tripped and the declared type hid the mismatch.
+    profiles: Array.isArray(base.profiles)
+      ? base.profiles[0] ?? null
+      : base.profiles ?? null,
+  };
 }
 
 /**
@@ -194,7 +225,14 @@ export class MessagingService {
           )
         `)
         .eq('user_id', user.id)
-        .order('conversations.last_message_at', { foreignTable: 'conversations', ascending: false });
+        // Order by the embedded conversation's `last_message_at`, newest first.
+        //
+        // The column name must be given BARE here. `foreignTable` already
+        // prefixes the embedded table, so writing 'conversations.last_message_at'
+        // produced the double-qualified `conversations.last_message_at.desc`,
+        // which PostgREST rejected with PGRST100 ("failed to parse order") and
+        // which made this endpoint 500 for every caller.
+        .order('last_message_at', { foreignTable: 'conversations', ascending: false });
       
       if (error) {
         console.error('[DB Error - Get User Conversations]:', error);
@@ -266,7 +304,7 @@ export class MessagingService {
           *,
           conversation_members:conversation_members!inner(
             user_id,
-            users:users!inner(id, email, profiles:first_name, last_name, display_name, avatar_url, role)
+            users:users!inner(id, email, role, profiles(first_name, last_name, display_name, avatar_url))
           )
         `)
         .eq('id', conversationId)
@@ -322,7 +360,7 @@ export class MessagingService {
         .from('messages')
         .select(`
           *,
-          sender:users!inner(id, email, profiles:first_name, last_name, display_name, avatar_url)
+          sender:users!inner(id, email, profiles(first_name, last_name, display_name, avatar_url))
         `)
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: false })
@@ -706,7 +744,7 @@ export class MessagingService {
           member_role,
           last_read_at,
           joined_at,
-          users:user_id (id, email, profiles:first_name, last_name, display_name, avatar_url)
+          users:user_id (id, email, profiles(first_name, last_name, display_name, avatar_url))
         `)
         .eq('conversation_id', conversationId);
       

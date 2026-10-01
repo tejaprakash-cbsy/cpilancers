@@ -47,11 +47,47 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return body.data as T;
 }
 
+/**
+ * Build the query string for a client-side request.
+ *
+ * `URLSearchParams` stringifies `undefined` into the literal text "undefined",
+ * so an options object whose unset filters are `undefined` produced requests
+ * like `?search=undefined&sapProducts=undefined`, which the API rejected with
+ * HTTP 400. Unset filters are now omitted entirely.
+ *
+ * `null` and `undefined` are both dropped. Empty strings are KEPT, because an
+ * empty string can be a meaningful filter value (e.g. `status=`), and arrays
+ * are joined with commas, which is the existing multi-value convention.
+ *
+ * Anything else is passed through unchanged, so existing filtering behaviour
+ * is preserved for every real value.
+ */
+function buildQueryString(params: Record<string, unknown>): string {
+  const search = new URLSearchParams();
+  for (const key of Object.keys(params)) {
+    const value = params[key];
+    if (value === undefined || value === null) continue;
+    if (Array.isArray(value)) {
+      if (value.length === 0) continue;
+      search.set(key, value.map((v) => String(v)).join(','));
+      continue;
+    }
+    search.set(key, String(value));
+  }
+  return search.toString();
+}
+
+/** Shared query-string builder for GET requests. */
+function get<T>(url: string, params?: Record<string, unknown>): Promise<T> {
+  const query = params ? buildQueryString(params) : '';
+  return request<T>(query ? `${url}?${query}` : url);
+}
+
 export class ClientAuthService { static getCurrentUser() { return request<User>('/api/auth/me'); } }
 export class ClientJobService {
   static getJobById(id: string) { return request<Job>(`/api/jobs/${id}`); }
   static getClientIdByUserId(userId: string) { return request<string | null>(`/api/jobs/client/${userId}`); }
-  static getJobs(options: Record<string, unknown>) { return request<{ jobs: Job[]; total: number; page: number; limit: number }>(`/api/jobs?${new URLSearchParams(options as Record<string, string>).toString()}`); }
+  static getJobs(options: Record<string, unknown>) { return get<{ jobs: Job[]; total: number; page: number; limit: number }>('/api/jobs', options); }
   static createJob(data: Record<string, unknown>) { return request<Job>('/api/jobs', { method: 'POST', body: JSON.stringify(data) }); }
   static updateJob(id: string, data: Record<string, unknown>) { return request<Job>(`/api/jobs/${id}`, { method: 'PATCH', body: JSON.stringify(data) }); }
   static publishJob(id: string) { return request<void>(`/api/jobs/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'open' }) }); }
@@ -69,8 +105,8 @@ export class ClientJobService {
  */
 export class ClientProposalService {
   static createProposal(data: Record<string, unknown>) { return request<Proposal>('/api/proposals', { method: 'POST', body: JSON.stringify(data) }); }
-  static getProposalsForJob(jobId: string, filterStatus?: unknown, options?: Record<string, unknown>) { const params = new URLSearchParams(options as Record<string, string>); if (filterStatus) params.set('status', Array.isArray(filterStatus) ? filterStatus.join(',') : String(filterStatus)); return request<{ proposals: Proposal[]; total: number; page: number; limit: number }>(`/api/jobs/${jobId}/proposals?${params}`); }
-  static getProposalsByConsultant(options?: Record<string, unknown>) { return request<{ proposals: Proposal[]; total: number; page: number; limit: number }>(`/api/proposals?${new URLSearchParams(options as Record<string, string>).toString()}`); }
+  static getProposalsForJob(jobId: string, filterStatus?: unknown, options?: Record<string, unknown>) { const params = new URLSearchParams(buildQueryString(options || {})); if (filterStatus) params.set('status', Array.isArray(filterStatus) ? filterStatus.join(',') : String(filterStatus)); const q = params.toString(); return request<{ proposals: Proposal[]; total: number; page: number; limit: number }>(`/api/jobs/${jobId}/proposals${q ? '?' + q : ''}`); }
+  static getProposalsByConsultant(options?: Record<string, unknown>) { return get<{ proposals: Proposal[]; total: number; page: number; limit: number }>('/api/proposals', options); }
   static shortlistProposal(id: string) { return request<Proposal>(`/api/proposals/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'shortlisted' }) }); }
   static rejectProposal(id: string) { return request<Proposal>(`/api/proposals/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'rejected' }) }); }
   static acceptProposal(id: string) { return request<Proposal>(`/api/proposals/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'accepted' }) }); }
