@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/services/auth.service';
 import { ProposalService } from '@/services/proposal.service';
 import { proposalFilterSchema } from '@/lib/validations/proposal.schemas';
+import type { ProposalStatus } from '@/lib/validations/proposal.schemas';
 import { formatErrorResponse } from '@/lib/errors';
 
 // Helper to get job ID from route params
@@ -40,13 +41,13 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const statusParam = url.searchParams.get('status');
     const statuses = statusParam
-      ? (statusParam.split(',').filter(Boolean) as any)
+      ? (statusParam.split(',').map((s) => s.trim()).filter(Boolean) as ProposalStatus[])
       : undefined;
 
     const validatedFilter = proposalFilterSchema.parse({
       status: statuses,
-      sortBy: (url.searchParams.get('sortBy') as any) || 'submitted_at',
-      sortOrder: (url.searchParams.get('sortOrder') as any) || 'desc',
+      sortBy: url.searchParams.get('sortBy') ?? 'submitted_at',
+      sortOrder: url.searchParams.get('sortOrder') ?? 'desc',
       page: parseInt(url.searchParams.get('page') || '1'),
       limit: parseInt(url.searchParams.get('limit') || '10'),
     });

@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 
 /**
  * Hook to manage boolean toggle state
@@ -43,16 +43,16 @@ export function useDebounce<T>(value: T, delay: number = 500): T {
  * Hook to detect if component is mounted (prevents state updates on unmounted components)
  */
 export function useIsMounted(): () => boolean {
-  const [isMounted, setIsMounted] = useState(false);
+  const isMounted = useRef(false);
 
   useEffect(() => {
-    setIsMounted(true);
+    isMounted.current = true;
     return () => {
-      setIsMounted(false);
+      isMounted.current = false;
     };
   }, []);
 
-  return useCallback(() => isMounted, [isMounted]);
+  return useCallback(() => isMounted.current, []);
 }
 
 /**

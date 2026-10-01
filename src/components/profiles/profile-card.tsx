@@ -51,10 +51,6 @@ export default function ProfileCard({
             <span className="text-xl font-medium">{initials}</span>
           </div>
         )}
-        {/* Online/Offline indicator */}
-        <div className="absolute bottom-2 right-2 w-3 h-3 bg-green-500 rounded-full ring-2 ring-white">
-          {/* In a real app, this would come from presence/user status */}
-        </div>
       </div>
       
       {/* Content */}

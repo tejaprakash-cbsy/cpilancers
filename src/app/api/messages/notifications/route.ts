@@ -15,7 +15,7 @@ function getNotificationId(request: NextRequest): string | null {
   return match ? match[1] : null;
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const user = await AuthService.getCurrentUser();
     if (!user) {

@@ -4,7 +4,6 @@
  * authorization checks, and server-side validation.
  */
 
-import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { BaseService } from './base.service';
 import { NotificationService } from '@/services/notification.service';
@@ -67,6 +66,20 @@ export interface ProposalFilterOptions {
   limit?: number;
 }
 
+/**
+ * PostgREST returns a `to-one` embed as an object, but supabase-js types every
+ * embedded relation as an array of rows because it cannot infer cardinality
+ * from the foreign key. Reading `.client_id` straight off the embedded `job`
+ * therefore risks `undefined` whenever the client hands back the array shape,
+ * which would turn the "is this the job owner?" decision into a silent false
+ * and deny the legitimate owner access to their own proposal. Normalise both
+ * shapes at the boundary instead.
+ */
+function embedRow<T>(embed: T | T[] | null | undefined): T | null {
+  if (embed == null) return null;
+  return Array.isArray(embed) ? (embed[0] ?? null) : embed;
+}
+
 export class ProposalService extends BaseService {
   /**
    * Create a new proposal. Enforces:
@@ -81,7 +94,9 @@ export class ProposalService extends BaseService {
     data: CreateProposalData
   ): Promise<Proposal> {
     try {
-      const supabase = await createClient();
+      // Every read and write below goes through the admin client: the ownership
+      // and duplicate-proposal checks must see rows regardless of RLS, and the
+      // caller has already been authenticated and role-checked by the route.
       const adminSupabase = createAdminClient();
 
       // 1. Verify consultant profile exists
@@ -221,10 +236,17 @@ export class ProposalService extends BaseService {
         .eq('id', proposal.consultant_id)
         .single();
 
+      const job = embedRow<{ client_id: string }>(
+        (proposal as unknown as { job: { client_id: string } | { client_id: string }[] | null }).job
+      );
+      if (!job?.client_id) {
+        throw new NotFoundError('Job for this proposal');
+      }
+
       const { data: jobClient } = await adminSupabase
         .from('client_profiles')
         .select('user_id')
-        .eq('id', proposal.job.client_id)
+        .eq('id', job.client_id)
         .single();
 
       const isAuthor = consultantProfile?.user_id === userId;
@@ -279,8 +301,24 @@ export class ProposalService extends BaseService {
         query = query.in('status', status);
       }
 
-      // Sorting
-      query = query.order(sortBy, { ascending: sortOrder === 'asc' });
+      // Sorting.
+      // Defence in depth: `sortBy` is interpolated into PostgREST's `order=`
+      // parameter. The signature already constrains it to this union, but a
+      // runtime check means a future caller reaching this service directly
+      // (bypassing the schema) cannot turn a sort field into an injection point.
+      const allowedSortFields = [
+        'submitted_at',
+        'proposed_price_cents',
+        'proposed_duration_weeks',
+      ] as const;
+      const effectiveSortBy = allowedSortFields.includes(
+        sortBy as (typeof allowedSortFields)[number]
+      )
+        ? sortBy
+        : 'submitted_at';
+      const effectiveSortOrder = sortOrder === 'asc' ? 'asc' : 'desc';
+
+      query = query.order(effectiveSortBy, { ascending: effectiveSortOrder === 'asc' });
 
       // Pagination
       const from = (page - 1) * limit;
@@ -311,7 +349,7 @@ export class ProposalService extends BaseService {
     jobId: string,
     clientUserId: string,
     filterStatus?: ProposalStatus[],
-    options?: { sortBy?: string; sortOrder?: string; page?: number; limit?: number }
+    options?: { sortBy?: ProposalFilterOptions['sortBy']; sortOrder?: ProposalFilterOptions['sortOrder']; page?: number; limit?: number }
   ): Promise<{ proposals: Proposal[]; total: number; page: number; limit: number }> {
     try {
       // Verify the caller owns this job
@@ -339,8 +377,11 @@ export class ProposalService extends BaseService {
       return await this.listProposals('system', {
         job_id: jobId,
         status: filterStatus,
-        sortBy: (options?.sortBy as any) || 'submitted_at',
-        sortOrder: (options?.sortOrder as any) || 'desc',
+        // Constrained to the service's declared union rather than cast through
+        // `any`. This value is interpolated into `query.order(sortBy)`, so it
+        // must never be an unchecked string from the caller.
+        sortBy: options?.sortBy ?? 'submitted_at',
+        sortOrder: options?.sortOrder ?? 'desc',
         page,
         limit,
       });
@@ -355,7 +396,7 @@ export class ProposalService extends BaseService {
    */
   static async getProposalsByConsultant(
     consultantUserId: string,
-    options?: { status?: ProposalStatus[]; sortBy?: string; sortOrder?: string; page?: number; limit?: number }
+    options?: { status?: ProposalStatus[]; sortBy?: ProposalFilterOptions['sortBy']; sortOrder?: ProposalFilterOptions['sortOrder']; page?: number; limit?: number }
   ): Promise<{ proposals: Proposal[]; total: number; page: number; limit: number }> {
     try {
       const adminSupabase = createAdminClient();
@@ -373,8 +414,8 @@ export class ProposalService extends BaseService {
       return await this.listProposals('system', {
         consultant_id: profile.id,
         status: options?.status,
-        sortBy: (options?.sortBy as any) || 'submitted_at',
-        sortOrder: (options?.sortOrder as any) || 'desc',
+        sortBy: options?.sortBy ?? 'submitted_at',
+        sortOrder: options?.sortOrder ?? 'desc',
         page,
         limit,
       });
@@ -501,12 +542,15 @@ export class ProposalService extends BaseService {
         .single();
       const isConsultantAuthor = consultantProfile?.user_id === actorUserId;
 
+      const job = embedRow<{ client_id: string }>(
+        (proposal as unknown as { job: { client_id: string } | { client_id: string }[] | null }).job
+      );
       const { data: jobClientProfile } = await adminSupabase
         .from('client_profiles')
         .select('user_id')
-        .eq('id', proposal.job.client_id)
-        .single();
-      const isJobOwner = jobClientProfile?.user_id === actorUserId;
+        .eq('id', job?.client_id ?? '')
+        .maybeSingle();
+      const isJobOwner = Boolean(jobClientProfile?.user_id) && jobClientProfile?.user_id === actorUserId;
 
       if (requiredActor === 'consultant' && !isConsultantAuthor) {
         throw new ForbiddenError('Only the proposal author can perform this action.');
@@ -524,7 +568,7 @@ export class ProposalService extends BaseService {
       // - For withdrawn by consultant: allowed from submitted/shortlisted only
 
       // Apply transition
-      const updatePayload: any = {
+      const updatePayload: { status: ProposalStatus; updated_at: string; client_viewed_at?: string } = {
         status: newStatus,
         updated_at: new Date().toISOString(),
       };
@@ -637,8 +681,16 @@ export class ProposalService extends BaseService {
     if (!builder) return;
 
     try {
-      const consultant = proposal.consultant as { user_id?: string } | undefined;
-      const job = proposal.job as { title?: string } | undefined;
+      // Normalised for the same reason as the authorization checks: the embed can
+      // arrive as a single row or a one-element array. Falling back to the raw
+      // list shape here meant the decision email was silently dropped (or sent
+      // with a blank job title) rather than failing loudly.
+      const consultant = embedRow<{ user_id?: string }>(
+        proposal.consultant as { user_id?: string } | { user_id?: string }[] | null | undefined
+      );
+      const job = embedRow<{ title?: string }>(
+        proposal.job as { title?: string } | { title?: string }[] | null | undefined
+      );
       const recipientUserId = consultant?.user_id;
       if (!recipientUserId) return;
 

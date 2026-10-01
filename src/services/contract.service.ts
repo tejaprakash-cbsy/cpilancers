@@ -26,7 +26,15 @@ export interface CreateContractData {
 type Participant = { isClient: boolean; isConsultant: boolean };
 
 export class ContractService extends BaseService {
-  private static async participant(contract: any, userId: string): Promise<Participant> {
+  /**
+   * Only the two participant columns are read off the contract row here, and
+   * both feed an authorization decision, so the parameter is typed to exactly
+   * those rather than `any`.
+   */
+  private static async participant(
+    contract: { client_id: string; consultant_id: string },
+    userId: string
+  ): Promise<Participant> {
     const db = createAdminClient();
     const [{ data: client }, { data: consultant }] = await Promise.all([
       db.from('client_profiles').select('user_id').eq('id', contract.client_id).single(),
@@ -236,7 +244,7 @@ export class ContractService extends BaseService {
     const clientOnly = ['active', 'completed', 'cancelled', 'terminated'].includes(next);
     if (clientOnly && !actor.isClient) throw new ForbiddenError('Only the client can perform this contract transition.');
     if (next === 'disputed' && !actor.isClient && !actor.isConsultant) throw new ForbiddenError('Only contract participants can dispute a contract.');
-    const payload: any = { status: next, updated_at: new Date().toISOString() };
+    const payload: { status: string; updated_at: string; started_at?: string; completed_at?: string; cancelled_at?: string } = { status: next, updated_at: new Date().toISOString() };
     if (next === 'active') payload.started_at = new Date().toISOString();
     if (next === 'completed') payload.completed_at = new Date().toISOString();
     if (['cancelled', 'terminated'].includes(next)) payload.cancelled_at = new Date().toISOString();
@@ -328,7 +336,7 @@ export class ContractService extends BaseService {
     if (next === 'in_progress' && !actor.isConsultant) throw new ForbiddenError('Only the assigned consultant can start work.');
     if (next === 'submitted' && !actor.isConsultant) throw new ForbiddenError('Only the assigned consultant can submit deliverables.');
     if (next === 'approved' && !actor.isClient) throw new ForbiddenError('Only the client can approve a milestone.');
-    const payload: any = { status: next, updated_at: new Date().toISOString() };
+    const payload: { status: string; updated_at: string; submitted_at?: string; approved_at?: string; deliverable_notes?: string; revision_notes?: string } = { status: next, updated_at: new Date().toISOString() };
     if (next === 'submitted') { payload.submitted_at = new Date().toISOString(); if (note) payload.deliverable_notes = note; }
     if (next === 'approved') payload.approved_at = new Date().toISOString();
     if (next === 'disputed' && note) payload.revision_notes = note;

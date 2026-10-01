@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { ClientAuthService as AuthService, ClientMessagingService as MessagingService } from '@/services/client-api.service';
 import { Loader2, MessageCircle, Send, X, Bell, Edit, Trash2, Flag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -54,41 +54,121 @@ export const ChatView: React.FC = () => {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editMessageContent, setEditMessageContent] = useState<string>('');
 
-  // Load conversation and messages
-  const loadConversation = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const user = await AuthService.getCurrentUser();
-      if (!user) {
-        router.push('/auth/signin');
-        return;
+  // Load conversation and messages.
+  //
+  // `loading` starts as `true`, so the removed leading `setLoading(true)` was
+  // redundant on mount and made this a synchronous setState source when called
+  // from the effect. The refresh paths that still want a spinner set it
+  // themselves.
+  //
+  // Memoised with `useCallback` on exactly the values it closes over, so the two
+  // effects below can list it as a dependency. Without the memo it would be a
+  // new function on every render and the effects would re-run on every render --
+  // refetching the conversation and tearing down the realtime channel each time.
+  const loadConversation = useCallback(
+    async (shouldApply: () => boolean = () => true) => {
+      try {
+        const user = await AuthService.getCurrentUser();
+        if (!shouldApply()) return;
+        if (!user) {
+          router.push('/login');
+          return;
+        }
+
+        if (!conversationId) {
+          setError('Conversation ID is required');
+          return;
+        }
+
+        // Both reads complete before anything is written.
+        const convData = await MessagingService.getConversationById(conversationId);
+        const msgData = await MessagingService.getMessages(conversationId, 1, 50);
+
+        // Single commit point. `shouldApply()` is false once the component has
+        // unmounted or `conversationId` has moved on, which is what stops a slow
+        // response for conversation A from overwriting conversation B.
+        if (!shouldApply()) return;
+        setConversation(convData as ChatConversation | null);
+        setMessages(msgData as ChatMessage[]);
+        setScrollToBottom(true);
+        setError(null);
+      } catch (err: unknown) {
+        if (!shouldApply()) return;
+        setError(err instanceof Error ? err.message : 'Failed to load conversation');
+      } finally {
+        if (shouldApply()) setLoading(false);
       }
+    },
+    [conversationId, router]
+  );
 
-      if (!conversationId) {
-        setError('Conversation ID is required');
-        return;
-      }
-
-      // Load conversation details
-      const convData = await MessagingService.getConversationById(conversationId);
-      setConversation(convData as ChatConversation | null);
-
-      // Load messages
-      const msgData = await MessagingService.getMessages(conversationId, 1, 50);
-      setMessages(msgData as ChatMessage[]);
-      setScrollToBottom(true);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to load conversation');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Load initial data
+  // Load initial data.
+  //
+  // The loader itself is reused by the refresh/send handlers, so it stays as
+  // written. The effect calls it through an async IIFE with a cancellation
+  // guard instead of invoking it directly: that keeps the state writes off the
+  // synchronous effect path (react-hooks/set-state-in-effect).
+  //
+  // The guard is handed INTO the loader rather than checked after it returns.
+  // Previously `await loadConversation(); if (cancelled) return;` ran after the
+  // loader had already called setConversation/setMessages/setError, so the flag
+  // could never prevent a stale write -- opening conversation A and then quickly
+  // B could render A's messages under B's header.
   useEffect(() => {
-    loadConversation();
-  }, [conversationId, searchParams]);
+    let cancelled = false;
+    const shouldApply = () => !cancelled;
+    void (async () => {
+      await loadConversation(shouldApply);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId, searchParams, loadConversation]);
+
+  // Realtime message delivery.
+  //
+  // Best-effort. See `ClientMessagingService.subscribeToConversation`: realtime
+  // needs `messages` in the `supabase_realtime` publication, which no migration
+  // currently sets up, so this subscription usually reports CHANNEL_ERROR or
+  // TIMED_OUT and simply logs. Everything the user sees is still driven by
+  // `loadConversation`, which runs on open, on conversation change and on manual
+  // refresh -- so realtime failing must never be able to break the view.
+  useEffect(() => {
+    if (!conversationId) return;
+
+    let subscription: { unsubscribe: () => void } | null = null;
+    try {
+      subscription = MessagingService.subscribeToConversation(
+        conversationId,
+        (payload) => {
+          const record = (payload as { new?: unknown })?.new;
+          if (!record || typeof record !== 'object') return;
+          setMessages((current) => {
+            const incoming = record as ChatMessage;
+            // Realtime can deliver the same row twice (own send echoed back,
+            // plus a reconnect replay), so de-duplicate on id.
+            if (current.some((message) => message.id === incoming.id)) return current;
+            return [...current, incoming];
+          });
+          setScrollToBottom(true);
+        },
+        (status) => {
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            // Pull the truth over HTTP once rather than leaving a stale list.
+            void loadConversation();
+          }
+        }
+      );
+    } catch (error) {
+      console.error('[ChatView] Realtime subscription unavailable:', error);
+    }
+
+    return () => {
+      // Runs on conversation change AND unmount, so switching conversations
+      // cannot leave the previous channel open.
+      subscription?.unsubscribe();
+    };
+  }, [conversationId, loadConversation]);
 
   // Scroll to bottom when messages change or scrollToBottom flag is set
   useEffect(() => {
@@ -208,7 +288,10 @@ export const ChatView: React.FC = () => {
             Please try again or contact support if the issue persists.
           </p>
           <div className="mt-4">
-            <Button onClick={loadConversation}>Try Again</Button>
+            {/* Wrapped: `loadConversation` takes a `shouldApply` guard, so it must
+                never be handed to onClick directly -- React would pass the click
+                event as that argument. */}
+            <Button onClick={() => void loadConversation()}>Try Again</Button>
           </div>
         </div>
       </div>

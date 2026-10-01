@@ -2,71 +2,84 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import Image from 'next/image';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { ClientProfileService as ProfileService } from '@/services/client-api.service';
 import { ProfileCard } from '@/components/profiles/profile-card';
 import { cn } from '@/lib/utils';
-import type { ClientProfile, Profile } from '@/types/database';
+import type { ClientProfile, Company, Profile } from '@/types/database';
 
 export default function ClientPublicProfilePage() {
   const { id } = useParams();
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [clientProfile, setClientProfile] = useState<ClientProfile | null>(null);
-  // NOTE: deliberately untyped. The "Company Information" block below
-  // dereferences `company` without a null guard, so a `Company | null` type
-  // here would be a compile error. That is a pre-existing latent null-deref
-  // bug; left as-is so rendered output is unchanged. See docs follow-up.
-  const [company, setCompany] = useState<any>(null);
+  // Properly typed. The previous `any` was deliberately chosen to dodge a
+  // compile error caused by a genuine null-dereference further down (see the
+  // `company` guard below): the "Company Information" section read
+  // `company.legal_name` inside the *fallback* branch of `company?.logo_url`,
+  // so a client with no company row crashed the page at runtime. The guard is
+  // the fix; the type can be honest again.
+  const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isOwnProfile, setIsOwnProfile] = useState(false);
 
-  async function loadProfileData() {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Get client profile by ID
-      const clientProfileData = await ProfileService.getClientProfileById(id as string);
-      if (!clientProfileData) {
-        setError('Client not found');
-        return;
-      }
-      
-      setClientProfile(clientProfileData.client);
-      
-      // Get user profile for this client
-      const profileData = await ProfileService.getProfileByUserId(clientProfileData.client.user_id);
-      if (!profileData) {
-        setError('Profile data not found');
-        return;
-      }
-      
-      setProfile(profileData);
-      
-      // Get company data
-      const companyData = clientProfileData.company;
-      if (companyData) {
-        setCompany(companyData);
-      }
-      
-      // Check if this is the current user's profile
-      const currentUser = await ProfileService.getProfile();
-      setIsOwnProfile(!!currentUser && currentUser.user?.id === profileData.user_id);
-      
-    } catch (err: unknown) {
-      console.error('Error loading client profile:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load profile');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Fetch profile data
+  // Fetch profile data.
+  //
+  // The loader sets state synchronously (setLoading(true) before the first
+  // await), which `react-hooks/set-state-in-effect` rejects. Wrapping it in an
+  // IIFE pushed the setState into a microtask but did not change behaviour, so
+  // instead the loader is marked async-safe by hoisting the state updates after
+  // the first await, which is where the real work happens anyway.
   useEffect(() => {
-    loadProfileData();
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setError(null);
+
+        // Get client profile by ID
+        const clientProfileData = await ProfileService.getClientProfileById(id as string);
+        if (cancelled) return;
+        if (!clientProfileData) {
+          setError('Client not found');
+          return;
+        }
+
+        setClientProfile(clientProfileData.client);
+
+        // Get user profile for this client
+        const profileData = await ProfileService.getProfileByUserId(clientProfileData.client.user_id);
+        if (cancelled) return;
+        if (!profileData) {
+          setError('Profile data not found');
+          return;
+        }
+
+        setProfile(profileData);
+
+        // Get company data
+        setCompany(clientProfileData.company ?? null);
+
+        // Check if this is the current user's profile
+        const currentUser = await ProfileService.getProfile();
+        if (cancelled) return;
+        setIsOwnProfile(!!currentUser && currentUser.user?.id === profileData.user_id);
+      } catch (err: unknown) {
+        if (cancelled) return;
+        console.error('Error loading client profile:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load profile');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   if (loading) {
@@ -98,12 +111,14 @@ export default function ClientPublicProfilePage() {
                 The client profile you&rsquo;re looking for may not exist or is no longer available.
               </p>
               <div className="mt-6">
-                <a 
+                {/* Was a raw <a href="/">, which triggers a full document
+                    navigation and discards the client-side router. */}
+                <Link
                   href="/"
                   className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200"
                 >
                   Go to Homepage
-                </a>
+                </Link>
               </div>
             </div>
           </div>
@@ -204,14 +219,21 @@ export default function ClientPublicProfilePage() {
           {/* Profile Details */}
           <div className="space-y-8">
             {/* Company Info */}
+            {/* Guarded: a client profile may legitimately have no company row
+                yet. Without this the section dereferenced `company.legal_name`
+                on null and threw during render, replacing the page with the
+                error boundary. */}
+            {company && (
             <section>
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Company Information</h2>
               <div className="space-y-4">
                 <div className="flex items-start">
                   <div className="flex-shrink-0">
                     {company?.logo_url ? (
-                      <img 
-                        src={company.logo_url} 
+                      <Image
+                        src={company.logo_url}
+                        width={48}
+                        height={48} 
                         alt={`${company.legal_name} logo`} 
                         className="h-12 w-12 object-contain rounded"
                       />
@@ -252,6 +274,7 @@ export default function ClientPublicProfilePage() {
                 </div>
               </div>
             </section>
+            )}
             
             {/* Client Representative Info */}
             <section>
@@ -260,8 +283,10 @@ export default function ClientPublicProfilePage() {
                 <div className="flex items-start">
                   <div className="flex-shrink-0">
                     {profile.avatar_url ? (
-                      <img 
-                        src={profile.avatar_url} 
+                      <Image
+                        src={profile.avatar_url}
+                        width={40}
+                        height={40} 
                         alt={`${profile.display_name}'s photo`} 
                         className="h-10 w-10 rounded-full"
                       />

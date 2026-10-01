@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Logo } from '@/components/brand/logo';
 
 export interface DashboardNavItem {
   label: string;
@@ -88,11 +89,8 @@ export function DashboardShell({
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        <Link href="/" className="flex items-center gap-[10px]">
-          <span className="flex h-[34px] w-[34px] items-center justify-center rounded-[10px] bg-white text-lg font-extrabold text-[#365cf5]">
-            L
-          </span>
-          <span className="text-[22px] font-normal leading-none text-white">Lancers</span>
+        <Link href="/" className="inline-flex">
+          <Logo size={34} variant="dark" />
         </Link>
 
         <button

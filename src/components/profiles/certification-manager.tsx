@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { ClientProfileService as ProfileService } from '@/services/client-api.service';
 import { CertificationBadge } from '@/components/profiles/certification-badge';
 import { certificationFormSchema } from '@/lib/validations/profile.schemas';
@@ -39,31 +39,41 @@ export default function CertificationManager({ consultantId, onUpdate }: Certifi
     verification_document_url: '',
   });
 
-  // Fetch data
-  useEffect(() => {
-    loadData();
-  }, [consultantId]);
-
-  async function loadData() {
+  // Fetch data. See skill-manager for why the leading `setLoading(true)` was
+  // removed: `loading` starts as `true` and writing state synchronously made
+  // this a cascading-render source when called from the effect.
+  const loadData = useCallback(async () => {
     try {
-      setLoading(true);
-      setError(null);
-      
       // Get consultant's current certifications
       const consultantCertifications = await ProfileService.getConsultantCertifications(consultantId);
       setCertifications(consultantCertifications);
-      
+
       // Get all available certifications
       // For now, we'll get a static list or leave empty - in a real app this would come from database
       setAllCertifications([]);
-      
+
+      setError(null);
     } catch (err: unknown) {
       console.error('Error loading certifications data:', err);
       setError(err instanceof Error ? err.message : 'Failed to load certifications data');
     } finally {
       setLoading(false);
     }
-  }
+  }, [consultantId]);
+
+  // Routed through an async IIFE with a cancellation guard: this keeps the
+  // loader's state writes off the synchronous effect path and prevents a slow
+  // in-flight fetch for a previous consultantId from overwriting newer data.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      await loadData();
+      if (cancelled) return;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadData]);
 
   // Handle form input changes
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {

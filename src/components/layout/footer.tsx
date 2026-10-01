@@ -1,5 +1,6 @@
 import * as React from 'react';
 import Link from 'next/link';
+import { Logo } from '@/components/brand/logo';
 
 export const Footer: React.FC = () => {
   return (
@@ -8,12 +9,9 @@ export const Footer: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Brand Col */}
           <div className="space-y-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-[10px] bg-[#365cf5] flex items-center justify-center text-white font-extrabold text-sm">
-                <span aria-hidden="true">L</span>
-              </div>
-              <span className="text-[18px] text-[#172033]">Lancers</span>
-            </div>
+            <Link href="/" className="inline-flex">
+              <Logo size={32} />
+            </Link>
             <p className="text-xs text-slate-500 leading-relaxed">
               The premier B2B freelance marketplace dedicated to SAP Cloud Integration (CPI)
               and SAP Integration Suite specialists.

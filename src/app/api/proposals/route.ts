@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/services/auth.service';
 import { ProposalService } from '@/services/proposal.service';
 import { proposalCreateSchema, proposalFilterSchema } from '@/lib/validations/proposal.schemas';
+import type { ProposalStatus } from '@/lib/validations/proposal.schemas';
 import { formatErrorResponse } from '@/lib/errors';
 
 export async function POST(request: NextRequest) {
@@ -70,11 +71,11 @@ export async function GET(request: NextRequest) {
 
     const url = new URL(request.url);
     const filterData = {
-      status: url.searchParams.get('status')
-        ? url.searchParams.get('status')!.split(',').filter(Boolean) as any
-        : undefined,
-      sortBy: (url.searchParams.get('sortBy') as any) || 'submitted_at',
-      sortOrder: (url.searchParams.get('sortOrder') as any) || 'desc',
+      // `proposalFilterSchema` validates the values, so the cast is only a
+      // pre-alignment hint for the intermediate object literal.
+      status: (url.searchParams.get('status') ?? '').split(',').map((s) => s.trim()).filter(Boolean) as ProposalStatus[],
+      sortBy: (url.searchParams.get('sortBy') ?? 'submitted_at'),
+      sortOrder: (url.searchParams.get('sortOrder') ?? 'desc'),
       page: parseInt(url.searchParams.get('page') || '1'),
       limit: parseInt(url.searchParams.get('limit') || '10'),
     };

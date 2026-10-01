@@ -9,7 +9,7 @@ import { AuthService } from '@/services/auth.service';
 import { MessagingService } from '@/services/messaging.service';
 import { AppError } from '@/lib/errors';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const user = await AuthService.getCurrentUser();
     if (!user) {

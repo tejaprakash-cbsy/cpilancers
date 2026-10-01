@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ClientAuthService as AuthService, ClientProposalService as ProposalService } from '@/services/client-api.service';
 import ProposalList, { type ProposalListItem } from '@/components/proposals/proposal-list';
 import ProposalFilters from '@/components/proposals/proposal-filters';
@@ -48,26 +48,37 @@ export default function ConsultantProposalsPage() {
     };
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setFilters(initFilters as ProposalListFilters);
-    loadProposals();
   }, [searchParams]);
 
-  async function loadProposals() {
+  /**
+   * Load the consultant's proposals.
+   *
+   * `shouldApply` is the cancelled-flag guard, checked BEFORE every state write.
+   * It used to be called directly from the filter-initialisation effect, which
+   * meant it read the DEFAULT filters on the very first run (the `setFilters`
+   * above had not been applied yet) and there was no guard at all against a slow
+   * response landing after the URL changed.
+   */
+  const loadProposals = useCallback(
+    async (shouldApply: () => boolean = () => true) => {
     try {
       setLoading(true);
       setError(null);
       const user = await AuthService.getCurrentUser();
+      if (!shouldApply()) return;
       if (!user) {
-        router.push('/auth/signin');
+        router.push('/login');
         return;
       }
 
-      const result = await ProposalService.getProposalsByConsultant(user.id, {
+      const result = await ProposalService.getProposalsByConsultant({
         status: filters.status.length > 0 ? filters.status : undefined,
         sortBy: filters.sortBy,
         sortOrder: filters.sortOrder,
         page: filters.page,
         limit: filters.limit,
       });
+      if (!shouldApply()) return;
 
       setProposals(result.proposals as unknown as ProposalListItem[]);
       setPagination({
@@ -77,11 +88,28 @@ export default function ConsultantProposalsPage() {
         totalPages: Math.ceil(result.total / result.limit),
       });
     } catch (err: unknown) {
+      if (!shouldApply()) return;
       setError(err instanceof Error ? err.message : 'Failed to load proposals');
     } finally {
-      setLoading(false);
+      if (shouldApply()) setLoading(false);
     }
-  }
+    },
+    [filters, router]
+  );
+
+  // Refetch whenever the filters themselves change, not just the URL. The
+  // previous effect keyed on `searchParams` only, so changing a status filter
+  // updated the state but never re-queried.
+  useEffect(() => {
+    let cancelled = false;
+    const shouldApply = () => !cancelled;
+    void (async () => {
+      await loadProposals(shouldApply);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadProposals]);
 
   const handleFiltersChange = (newFilters: Partial<ProposalListFilters>) => {
     setFilters({ ...filters, ...newFilters, page: 1 }); // Reset to page 1
@@ -96,7 +124,7 @@ export default function ConsultantProposalsPage() {
       return;
     }
     try {
-      await ProposalService.withdrawProposal(proposalId, (await AuthService.getCurrentUser())?.id as string);
+      await ProposalService.withdrawProposal(proposalId);
       await loadProposals();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to withdraw proposal');

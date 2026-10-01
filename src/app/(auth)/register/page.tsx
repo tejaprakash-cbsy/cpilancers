@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Layers, UserPlus, Briefcase, Users } from 'lucide-react';
+import { UserPlus, Briefcase, Users } from 'lucide-react';
+import { Logo } from '@/components/brand/logo';
 import type { RegisterFormData } from '@/lib/validations/auth.schemas';
 
 export default function RegisterPage() {
@@ -101,13 +102,8 @@ export default function RegisterPage() {
     <div className="flex items-center justify-center min-h-screen p-4">
       <Card className="max-w-2xl w-full">
         <CardHeader className="text-center">
-          <Link href="/" className="inline-flex items-center justify-center gap-2 mb-4">
-            <div className="w-10 h-10 rounded-lg bg-[#0a4d8c] flex items-center justify-center text-white">
-              <Layers className="w-6 h-6" />
-            </div>
-            <span className="font-bold text-xl text-slate-900">
-              CPI <span className="text-[#0284c7]">Lancers</span>
-            </span>
+          <Link href="/" className="mb-4 inline-flex justify-center">
+            <Logo size={40} />
           </Link>
           <CardTitle>Create Your Account</CardTitle>
           <CardDescription>

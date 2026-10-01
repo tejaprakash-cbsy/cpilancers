@@ -79,6 +79,17 @@ function toValidationDetails(error: z.ZodError): ValidationIssueDetail[] {
 }
 
 /**
+ * Node/undici report a JSON parse failure as a `SyntaxError` subclass in some
+ * runtimes and as a plain `Error` carrying a `cause` in others, so match on the
+ * shape rather than the constructor alone.
+ */
+function isJsonSyntaxError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = `${error.message} ${error.cause instanceof Error ? error.cause.message : ''}`;
+  return /unexpected (end of json input|token)|json|is not valid JSON/i.test(message);
+}
+
+/**
  * Standard API error formatter for route handlers
  */
 export function formatErrorResponse(error: unknown) {
@@ -91,6 +102,36 @@ export function formatErrorResponse(error: unknown) {
         details: error.details,
       },
       statusCode: error.statusCode,
+    };
+  }
+
+  // A body that is not valid JSON is a client input error, not a server fault.
+  // `request.json()` rejects with a plain `SyntaxError`, which previously fell
+  // through to the generic branch below and was reported as HTTP 500 -- a
+  // malformed payload, a truncated upload and a request with no body at all
+  // all produced a 500 instead of a 400.
+  if (error instanceof SyntaxError || isJsonSyntaxError(error)) {
+    return {
+      success: false,
+      error: {
+        message: 'Request body must be valid JSON.',
+        code: 'INVALID_JSON',
+      },
+      statusCode: 400,
+    };
+  }
+
+  // A body that parsed but is not an object (`null`, a bare string, a number, an
+  // array) cannot satisfy any request schema. Reading a property off it throws a
+  // `TypeError` inside the handler, which again surfaced as a 500.
+  if (error instanceof TypeError) {
+    return {
+      success: false,
+      error: {
+        message: 'Request body must be a JSON object.',
+        code: 'INVALID_REQUEST_BODY',
+      },
+      statusCode: 400,
     };
   }
 

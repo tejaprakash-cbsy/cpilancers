@@ -5,8 +5,12 @@ export async function proxy(request: NextRequest) {
   const response = await updateSession(request);
   const { pathname } = request.nextUrl;
 
+  // `dashboard` was missing from this list, so both dashboards were reachable
+  // while signed out and simply failed client-side instead of being turned away.
   const protectedPath =
-    /^\/(profile|messages|proposals|contracts|jobs\/create|jobs\/[^/]+\/(edit|proposals))(\/|$)/.test(pathname);
+    /^\/(profile|messages|proposals|contracts|dashboard|jobs\/create|jobs\/[^/]+\/(edit|proposals))(\/|$)/.test(
+      pathname
+    );
 
   // Stage 13: the administrator surface. This is a REDIRECT for convenience
   // only. An unauthenticated visitor is turned away before a route handler ever
@@ -24,9 +28,14 @@ export async function proxy(request: NextRequest) {
   }
 
   if (protectedPath && !isSignedIn) {
-    const registerUrl = new URL('/register', request.url);
-    registerUrl.searchParams.set('next', pathname);
-    return NextResponse.redirect(registerUrl);
+    // Sign-in, not sign-up. Someone who asked for a protected page is trying to
+    // use an account they already have; bouncing them to `/register` (as this
+    // did previously, while the `/admin` branch above already used `/login`)
+    // sent them to the wrong form. The `next` value is validated against open
+    // redirects by the login page before it is honoured.
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('next', pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
   return response;

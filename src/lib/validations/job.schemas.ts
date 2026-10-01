@@ -149,7 +149,9 @@ export const jobFilterSchema = z.object({
   protocols: z.array(z.string()).optional(),
   budgetMin: z.number().int().min(0).optional(),
   budgetMax: z.number().int().min(0).optional(),
-  experienceMin: z.number().int().min(0).optional(),
+  // `experienceMin` was removed: it mapped to a `experience_required` column
+  // that does not exist on `jobs`, so applying it failed the whole query.
+  budgetType: z.enum(['fixed_price', 'hourly_rate', 'range']).optional(),
   status: z.array(jobStatusEnum).optional(),
   sortBy: z.enum(['created_at', 'updated_at', 'views_count']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),

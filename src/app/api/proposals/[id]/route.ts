@@ -8,7 +8,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/services/auth.service';
 import { ProposalService } from '@/services/proposal.service';
-import { proposalStatusUpdateSchema } from '@/lib/validations/proposal.schemas';
+import { proposalStatusUpdateSchema, proposalUpdateSchema } from '@/lib/validations/proposal.schemas';
+import type { UpdateProposalData } from '@/services/proposal.service';
 import { formatErrorResponse, ValidationError } from '@/lib/errors';
 
 // Helper to get proposal ID from route params
@@ -59,27 +60,41 @@ export async function PATCH(request: NextRequest) {
       throw new ValidationError('Proposal ID is required.');
     }
 
-    const body = await request.json();
+    const requestBody = await request.json();
 
     // Determine if this is a status transition or a content update
-    if (body.status) {
+    if (requestBody.status) {
       // Status transition
-      const validated = proposalStatusUpdateSchema.parse(body);
+      const validated = proposalStatusUpdateSchema.parse(requestBody);
       const proposal = await ProposalService.transitionStatus(
         proposalId,
-        validated.status as any,
+        validated.status,
         user.id,
         validated.note
       );
       return NextResponse.json({ success: true, data: proposal }, { status: 200 });
     } else {
-      // Content update (only for draft proposals)
-      const updateData: any = {};
-      if (body.cover_letter_markdown) updateData.cover_letter_markdown = body.cover_letter_markdown;
-      if (body.technical_solution_markdown) updateData.technical_solution_markdown = body.technical_solution_markdown;
-      if (body.proposed_duration_weeks) updateData.proposed_duration_weeks = body.proposed_duration_weeks;
-      if (body.proposed_price_cents) updateData.proposed_price_cents = body.proposed_price_cents;
-      if (body.proposed_milestones) updateData.proposed_milestones = body.proposed_milestones;
+      // Content update (only for draft proposals).
+      //
+      // The previous version hand-rolled this with truthiness checks
+      // (`if (body.x) updateData.x = body.x`). That silently discarded any
+      // legitimate zero/empty value -- a milestone worth 0 cents or a cleared
+      // field -- and, more importantly, performed no validation at all, so
+      // arbitrary types and out-of-range numbers reached the database. The
+      // shared schema is used instead; unset fields stay absent via the
+      // `!== undefined` test.
+      const raw = requestBody as Record<string, unknown>;
+      const validated = proposalUpdateSchema.parse(raw);
+      const updateData: UpdateProposalData = {};
+      if (validated.cover_letter_markdown !== undefined) updateData.cover_letter_markdown = validated.cover_letter_markdown;
+      if (validated.technical_solution_markdown !== undefined) updateData.technical_solution_markdown = validated.technical_solution_markdown;
+      if (validated.proposed_duration_weeks !== undefined) updateData.proposed_duration_weeks = validated.proposed_duration_weeks;
+      if (validated.proposed_price_cents !== undefined) updateData.proposed_price_cents = validated.proposed_price_cents;
+      if (validated.proposed_milestones !== undefined) updateData.proposed_milestones = validated.proposed_milestones;
+
+      if (Object.keys(updateData).length === 0) {
+        throw new ValidationError('No editable proposal fields were supplied.');
+      }
 
       const proposal = await ProposalService.updateProposal(proposalId, user.id, updateData);
       return NextResponse.json({ success: true, data: proposal }, { status: 200 });

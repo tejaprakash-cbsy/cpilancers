@@ -4,7 +4,6 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
-import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { 
   Profile, 
@@ -16,20 +15,52 @@ import type {
   ConsultantCertification,
   Portfolio,
   Company,
-  UserRole
 } from '@/types/database';
 import {
   AppError,
-  UnauthorizedError,
   ForbiddenError,
-  ValidationError,
-  ConflictError,
 } from '@/lib/errors';
 
-// Profile validation constants
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const ALLOWED_DOCUMENT_TYPES = ['application/pdf'];
+// NOTE: `createBrowserClient`, `UserRole`, `UnauthorizedError`,
+// `ValidationError`, `ConflictError` and the upload-size/mime constants
+// (MAX_FILE_SIZE, ALLOWED_IMAGE_TYPES, ALLOWED_DOCUMENT_TYPES) were imported
+// and declared here but never referenced by any method -- no upload path exists
+// on the server-side service. They were removed as dead code; reintroduce them
+// alongside the upload endpoint that actually needs them.
+
+/**
+ * The Supabase Auth user, as returned by `supabase.auth.getUser()`.
+ *
+ * Distinct from the `User` row in this project's own `users` table (which
+ * carries `role` and `status`): this is the identity-provider record, whose only
+ * stable identifier is `id`. Typed structurally rather than as `any` so callers
+ * cannot reach for fields that do not exist.
+ */
+export interface AuthUser {
+  id: string;
+  email?: string | null;
+  user_metadata?: Record<string, unknown>;
+  app_metadata?: Record<string, unknown>;
+  created_at?: string;
+  last_sign_in_at?: string | null;
+}
+
+/**
+ * Whether a selected column should count toward profile completeness.
+ *
+ * Empty strings and empty arrays are treated as "not filled in" -- a column
+ * present but holding `''` is indistinguishable from `NULL` to a user filling
+ * in a form, and an empty `sap_footprint` array is not a populated list.
+ * Numeric zero is intentionally left as "populated" here; callers that need
+ * different semantics (e.g. a rating of 0 meaning "no reviews yet") apply that
+ * rule themselves.
+ */
+function isPopulated(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value !== '';
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
+}
 
 export class ProfileService {
   static async getProfileBundle(userId: string) {
@@ -152,7 +183,7 @@ export class ProfileService {
   /**
    * Get current user's profile
    */
-  static async getProfile(): Promise<{ profile: Profile; user: any } | null> {
+  static async getProfile(): Promise<{ profile: Profile; user: AuthUser } | null> {
     try {
       const supabase = await createClient();
       
@@ -543,10 +574,10 @@ export class ProfileService {
           .eq('user_id', profile.user_id)
           .single();
         if (clientProfile) {
-          const clientFields = ['company_id', 'job_title', 'department', 'billing_email'];
+          const clientFields = ['company_id', 'job_title', 'department', 'billing_email'] as const;
           for (const field of clientFields) {
             total++;
-            if ((clientProfile as any)[field] !== null && (clientProfile as any)[field] !== undefined && (clientProfile as any)[field] !== '') {
+            if (isPopulated(clientProfile[field])) {
               completed++;
             }
           }
@@ -558,10 +589,10 @@ export class ProfileService {
               .eq('id', clientProfile.company_id)
               .single();
             if (company) {
-              const companyFields = ['legal_name', 'brand_name', 'website_url', 'industry', 'company_size', 'sap_footprint', 'logo_url', 'tax_identifier', 'is_verified'];
+              const companyFields = ['legal_name', 'brand_name', 'website_url', 'industry', 'company_size', 'sap_footprint', 'logo_url', 'tax_identifier', 'is_verified'] as const;
               for (const field of companyFields) {
                 total++;
-                if ((company as any)[field] !== null && (company as any)[field] !== undefined && (company as any)[field] !== '' && !(Array.isArray((company as any)[field]) && (company as any)[field].length === 0)) {
+                if (isPopulated(company[field])) {
                   completed++;
                 }
               }
@@ -577,11 +608,32 @@ export class ProfileService {
           .eq('user_id', profile.user_id)
           .single();
         if (consultantProfile) {
-          const consultantFields = ['professional_headline', 'years_sap_experience', 'years_cpi_experience', 'hourly_rate_cents', 'min_project_size_cents', 'availability_status', 'available_hours_per_week, github_profile_url, linkedin_profile_url, overview_markdown, avg_rating, total_reviews_count, completed_contracts_count'];
+          // NOTE: the original array literal was missing a closing quote on
+          // `'available_hours_per_week`, which swallowed every following field
+          // into one string. The loop therefore ran a single iteration keyed on
+          // a field name that does not exist, so the consultant completeness
+          // score counted 1 checked field out of 1 total instead of 13 of 13 --
+          // a consultant at 100% scored the same as one with nothing filled in.
+          const consultantFields = [
+            'professional_headline',
+            'years_sap_experience',
+            'years_cpi_experience',
+            'hourly_rate_cents',
+            'min_project_size_cents',
+            'availability_status',
+            'available_hours_per_week',
+            'github_profile_url',
+            'linkedin_profile_url',
+            'overview_markdown',
+            'avg_rating',
+            'total_reviews_count',
+            'completed_contracts_count',
+          ] as const;
           for (const field of consultantFields) {
             total++;
-            const val = (consultantProfile as any)[field];
-            if (val !== null && val !== undefined && val !== '' && !(typeof val === 'number' && val === 0)) {
+            // A zero rating/review count is genuinely "not populated yet", so
+            // numeric zero is excluded here even though it is a real value.
+            if (isPopulated(consultantProfile[field]) && !(typeof consultantProfile[field] === 'number' && consultantProfile[field] === 0)) {
               completed++;
             }
           }

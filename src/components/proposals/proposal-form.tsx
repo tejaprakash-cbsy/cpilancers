@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ClientAuthService as AuthService, ClientProposalService as ProposalService } from '@/services/client-api.service';
+import { ClientProposalService as ProposalService } from '@/services/client-api.service';
 import { proposalCreateSchema } from '@/lib/validations/proposal.schemas';
 import { formatErrorResponse } from '@/lib/errors';
 import type { ProposalCreateFormData } from '@/lib/validations/proposal.schemas';
@@ -77,13 +77,10 @@ export default function ProposalForm({ jobId, onSubmitted }: ProposalFormProps) 
       const validated = proposalCreateSchema.parse(form);
 
       // Submit proposal
-      await ProposalService.createProposal(
-        (await AuthService.getCurrentUser())?.id as string,
-        {
-          ...validated,
-          status: validated.save_as_draft ? 'draft' : 'submitted',
-        }
-      );
+      await ProposalService.createProposal({
+        ...validated,
+        status: validated.save_as_draft ? 'draft' : 'submitted',
+      });
 
       if (onSubmitted) {
         onSubmitted();

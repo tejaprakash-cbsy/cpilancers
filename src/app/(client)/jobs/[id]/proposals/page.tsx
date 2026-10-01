@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ClientAuthService as AuthService, ClientJobService as JobService, ClientProposalService as ProposalService } from '@/services/client-api.service';
 import ProposalList from '@/components/proposals/proposal-list';
@@ -57,16 +57,25 @@ export default function JobProposalsPage() {
     };
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setFilters(initFilters as JobProposalsFilters);
-    loadData();
   }, [jobId]);
 
-  async function loadData() {
+  /**
+   * Load the job and its proposals.
+   *
+   * `shouldApply` is the cancelled-flag guard, checked BEFORE every state write
+   * rather than after this function returns. The previous shape called this from
+   * the effect and then checked a flag, which could never prevent the stale
+   * write because the writes happen in here.
+   */
+  const loadData = useCallback(
+    async (shouldApply: () => boolean = () => true) => {
     try {
       setLoading(true);
       setError(null);
 
       // Load job details and verify ownership
       const jobData = await JobService.getJobById(jobId as string);
+      if (!shouldApply()) return;
       if (!jobData) {
         setError('Job not found');
         return;
@@ -74,14 +83,22 @@ export default function JobProposalsPage() {
 
       // Load current user profile
       const profileData = await AuthService.getCurrentUser();
+      if (!shouldApply()) return;
       if (profileData) {
         setUserProfile(profileData);
         setIsClient(profileData.role === 'client');
       }
 
-      // Verify the user owns this job
-      if (isClient) {
+      // Verify the user owns this job.
+      //
+      // `profileData.role` is read directly, not the `isClient` state. `isClient`
+      // was set on the line above, but React state does not update within the
+      // same synchronous run, so `isClient` still held its previous value here --
+      // `false` on the first load. The ownership check therefore never ran on
+      // first render and relied entirely on the server to reject the request.
+      if (profileData?.role === 'client') {
         const clientId = await JobService.getClientIdByUserId(profileData.id);
+        if (!shouldApply()) return;
         if (jobData.client_id !== clientId) {
           setError('You do not have permission to view proposals for this job.');
           return;
@@ -93,7 +110,6 @@ export default function JobProposalsPage() {
       // Load proposals for this job
       const result = await ProposalService.getProposalsForJob(
         jobId as string,
-        profileData.id,
         filters.status.length > 0 ? filters.status : undefined,
         {
           sortBy: filters.sortBy,
@@ -102,6 +118,7 @@ export default function JobProposalsPage() {
           limit: filters.limit,
         }
       );
+      if (!shouldApply()) return;
 
       setProposals(result.proposals as unknown as ProposalListItem[]);
       setPagination({
@@ -111,11 +128,28 @@ export default function JobProposalsPage() {
         totalPages: Math.ceil(result.total / result.limit),
       });
     } catch (err: unknown) {
+      if (!shouldApply()) return;
       setError(err instanceof Error ? err.message : 'Failed to load job proposals');
     } finally {
-      setLoading(false);
+      if (shouldApply()) setLoading(false);
     }
-  }
+    },
+    // Closes over exactly these. `filters` is listed as a whole object: the
+    // filter-init effect replaces it wholesale, so object identity changes
+    // precisely when a refetch is wanted.
+    [jobId, filters]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const shouldApply = () => !cancelled;
+    void (async () => {
+      await loadData(shouldApply);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [jobId, loadData]);
 
   const handleFiltersChange = (newFilters: Partial<JobProposalsFilters>) => {
     setFilters({ ...filters, ...newFilters, page: 1 }); // Reset to page 1
@@ -127,10 +161,7 @@ export default function JobProposalsPage() {
 
   const handleShortlist = async (proposalId: string) => {
     try {
-      await ProposalService.shortlistProposal(
-        proposalId,
-        (await AuthService.getCurrentUser())?.id as string
-      );
+      await ProposalService.shortlistProposal(proposalId);
       await loadData();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to shortlist proposal');
@@ -139,10 +170,7 @@ export default function JobProposalsPage() {
 
   const handleReject = async (proposalId: string) => {
     try {
-      await ProposalService.rejectProposal(
-        proposalId,
-        (await AuthService.getCurrentUser())?.id as string
-      );
+      await ProposalService.rejectProposal(proposalId);
       await loadData();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to reject proposal');
@@ -151,10 +179,7 @@ export default function JobProposalsPage() {
 
   const handleAccept = async (proposalId: string) => {
     try {
-      await ProposalService.acceptProposal(
-        proposalId,
-        (await AuthService.getCurrentUser())?.id as string
-      );
+      await ProposalService.acceptProposal(proposalId);
       await loadData();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to accept proposal');

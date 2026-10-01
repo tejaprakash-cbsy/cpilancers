@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ClientAuthService as AuthService, ClientJobService as JobService } from '@/services/client-api.service';
@@ -20,13 +20,21 @@ export default function ProposalNewPage() {
   const [, setUserProfile] = useState<unknown>(null);
   const [isConsultant, setIsConsultant] = useState(false);
 
-  async function loadJobAndProfile() {
+  /**
+   * Load the job and verify the current user is a consultant.
+   *
+   * `shouldApply` is the cancelled-flag guard, checked BEFORE every state write,
+   * so navigating away mid-load cannot leave a stale job or error behind.
+   */
+  const loadJobAndProfile = useCallback(
+    async (shouldApply: () => boolean = () => true) => {
     try {
       setLoading(true);
       setError(null);
 
       // Load job details
       const jobData = await JobService.getJobById(jobId as string);
+      if (!shouldApply()) return;
       if (!jobData) {
         setError('Job not found');
         return;
@@ -35,26 +43,42 @@ export default function ProposalNewPage() {
 
       // Load current user profile
       const profileData = await AuthService.getCurrentUser();
+      if (!shouldApply()) return;
       if (profileData) {
         setUserProfile(profileData);
         setIsConsultant(profileData.role === 'consultant');
       }
 
-      // If not a consultant, redirect
-      if (!isConsultant) {
+      // Redirect non-consultants away.
+      //
+      // `profileData.role` is read directly rather than the `isConsultant` state
+      // set on the line above. React state does not update within the same
+      // synchronous run, so `isConsultant` still held its initial `false` here
+      // and EVERY consultant -- including consultants -- was redirected to '/'.
+      // The page was unreachable in practice.
+      if (profileData && profileData.role !== 'consultant') {
         router.push('/');
       }
     } catch (err: unknown) {
+      if (!shouldApply()) return;
       setError(err instanceof Error ? err.message : 'Failed to load job');
     } finally {
-      setLoading(false);
+      if (shouldApply()) setLoading(false);
     }
-  }
+    },
+    [jobId, router]
+  );
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadJobAndProfile();
-  }, [jobId]);
+    let cancelled = false;
+    const shouldApply = () => !cancelled;
+    void (async () => {
+      await loadJobAndProfile(shouldApply);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [jobId, loadJobAndProfile]);
 
   const handleProposalSubmitted = () => {
     router.push('/consultant/proposals');

@@ -99,6 +99,14 @@ export type ProposalCreateFormData = z.infer<typeof proposalCreateSchema>;
 /**
  * Schema for updating an existing proposal (consultant → PATCH /api/proposals/[id])
  * Only editable while status === 'draft'
+ *
+ * `proposed_milestones` is re-declared without its `.default([])`.
+ * `proposalCreateSchema` defaults the field so `POST` can omit it, but that
+ * default survives `.partial()`: `.partial()` only makes the key optional, it
+ * does not remove the default, so `parse({})` still produced
+ * `{ proposed_milestones: [] }`. `PATCH` then always had at least one key,
+ * making the route's "no editable fields" guard unreachable, and an empty body
+ * silently wiped every milestone on the proposal. Absent must mean absent here.
  */
 export const proposalUpdateSchema = proposalCreateSchema
   .pick({
@@ -108,7 +116,19 @@ export const proposalUpdateSchema = proposalCreateSchema
     proposed_price_cents: true,
     proposed_milestones: true,
   })
-  .partial();
+  .partial()
+  .extend({
+    proposed_milestones: z
+      .array(
+        z.object({
+          title: z.string().min(1).max(200),
+          description: z.string().max(1000).optional(),
+          due_weeks: z.number().int().min(1).max(52),
+          amount_cents: z.number().int().min(0),
+        })
+      )
+      .optional(),
+  });
 
 export type ProposalUpdateFormData = z.infer<typeof proposalUpdateSchema>;
 

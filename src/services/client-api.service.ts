@@ -58,14 +58,23 @@ export class ClientJobService {
   static closeJob(id: string) { return request<void>(`/api/jobs/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'closed' }) }); }
   static deleteJob(id: string) { return request<{ deleted: boolean }>(`/api/jobs/${id}`, { method: 'DELETE' }); }
 }
+/**
+ * Proposal client wrappers.
+ *
+ * None of these take a `userId`. The API resolves the caller from the session
+ * cookie, so a userId argument here was dead weight -- and it forced callers to
+ * write `(await AuthService.getCurrentUser())?.id as string`, an unchecked cast
+ * that would have sent the literal "undefined" as a user id if the session
+ * lookup ever failed. Authorization is the server's job, not the caller's.
+ */
 export class ClientProposalService {
-  static createProposal(_userId: string, data: Record<string, unknown>) { return request<Proposal>('/api/proposals', { method: 'POST', body: JSON.stringify(data) }); }
-  static getProposalsForJob(jobId: string, _userId: string, filterStatus?: unknown, options?: Record<string, unknown>) { const params = new URLSearchParams(options as Record<string, string>); if (filterStatus) params.set('status', Array.isArray(filterStatus) ? filterStatus.join(',') : String(filterStatus)); return request<{ proposals: Proposal[]; total: number; page: number; limit: number }>(`/api/jobs/${jobId}/proposals?${params}`); }
-  static getProposalsByConsultant(_userId: string, options?: Record<string, unknown>) { return request<{ proposals: Proposal[]; total: number; page: number; limit: number }>(`/api/proposals?${new URLSearchParams(options as Record<string, string>).toString()}`); }
-  static shortlistProposal(id: string, _userId: string) { return request<Proposal>(`/api/proposals/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'shortlisted' }) }); }
-  static rejectProposal(id: string, _userId: string) { return request<Proposal>(`/api/proposals/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'rejected' }) }); }
-  static acceptProposal(id: string, _userId: string) { return request<Proposal>(`/api/proposals/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'accepted' }) }); }
-  static withdrawProposal(id: string, _userId: string) { return request<Proposal>(`/api/proposals/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'withdrawn' }) }); }
+  static createProposal(data: Record<string, unknown>) { return request<Proposal>('/api/proposals', { method: 'POST', body: JSON.stringify(data) }); }
+  static getProposalsForJob(jobId: string, filterStatus?: unknown, options?: Record<string, unknown>) { const params = new URLSearchParams(options as Record<string, string>); if (filterStatus) params.set('status', Array.isArray(filterStatus) ? filterStatus.join(',') : String(filterStatus)); return request<{ proposals: Proposal[]; total: number; page: number; limit: number }>(`/api/jobs/${jobId}/proposals?${params}`); }
+  static getProposalsByConsultant(options?: Record<string, unknown>) { return request<{ proposals: Proposal[]; total: number; page: number; limit: number }>(`/api/proposals?${new URLSearchParams(options as Record<string, string>).toString()}`); }
+  static shortlistProposal(id: string) { return request<Proposal>(`/api/proposals/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'shortlisted' }) }); }
+  static rejectProposal(id: string) { return request<Proposal>(`/api/proposals/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'rejected' }) }); }
+  static acceptProposal(id: string) { return request<Proposal>(`/api/proposals/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'accepted' }) }); }
+  static withdrawProposal(id: string) { return request<Proposal>(`/api/proposals/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'withdrawn' }) }); }
 }
 // These three hit a route that exports POST only (see
 // src/app/api/messages/messages/[messageId]/route.ts). They previously sent

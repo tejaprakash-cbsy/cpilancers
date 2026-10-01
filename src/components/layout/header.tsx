@@ -4,6 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { Logo } from '@/components/brand/logo';
 import {
   Menu,
   X,
@@ -31,11 +32,8 @@ export const Header: React.FC = () => {
         <div className="flex h-[72px] items-center justify-between gap-4">
           {/* Brand Logo */}
           <div className="flex items-center gap-10">
-            <Link href="/" className="flex items-center gap-2.5 group">
-              <div className="w-[34px] h-[34px] rounded-[10px] bg-[#365cf5] flex items-center justify-center text-white font-extrabold text-lg transition-colors group-hover:bg-[#2445c7]">
-                <span aria-hidden="true">L</span>
-              </div>
-              <span className="text-[22px] font-normal leading-none text-[#172033]">Lancers</span>
+            <Link href="/" className="group">
+              <Logo size={34} />
             </Link>
 
             {/* Desktop Navigation */}

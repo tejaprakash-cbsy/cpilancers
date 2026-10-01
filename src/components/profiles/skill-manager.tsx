@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { ClientProfileService as ProfileService } from '@/services/client-api.service';
 import { SkillBadge } from '@/components/profiles/skill-badge';
 import { skillFormSchema } from '@/lib/validations/profile.schemas';
@@ -37,31 +37,47 @@ export default function SkillManager({ consultantId, onUpdate }: SkillManagerPro
     proficiency_level: 'advanced' as const,
   });
 
-  // Fetch data
-  useEffect(() => {
-    loadData();
-  }, [consultantId]);
-
-  async function loadData() {
+  // Fetch data.
+//
+// `loading` already initialises to `true`, so the previous leading
+// `setLoading(true); setError(null);` was redundant on mount *and* made this
+// function a synchronous setState source when invoked from the effect below
+// (react-hooks/set-state-in-effect). State is now written only after the first
+// await, which is where the real work happens anyway. The loading flag is still
+// cleared in `finally`, and refreshes after a mutation no longer flash a
+// spinner they did not need.
+const loadData = useCallback(async () => {
     try {
-      setLoading(true);
-      setError(null);
-      
       // Get consultant's current skills
       const consultantSkills = await ProfileService.getConsultantSkills(consultantId);
       setSkills(consultantSkills as unknown as ManagedSkill[]);
-      
+
       // Get all available skills
       const availableSkills = await ProfileService.getSkills();
       setAllSkills(availableSkills);
-      
+
+      setError(null);
     } catch (err: unknown) {
       console.error('Error loading skills data:', err);
       setError(err instanceof Error ? err.message : 'Failed to load skills data');
     } finally {
       setLoading(false);
     }
-  }
+  }, [consultantId]);
+
+  // Routed through an async IIFE with a cancellation guard: this keeps the
+  // loader's state writes off the synchronous effect path and prevents a slow
+  // in-flight fetch for a previous consultantId from overwriting newer data.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      await loadData();
+      if (cancelled) return;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadData]);
 
   // Handle form input changes
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {

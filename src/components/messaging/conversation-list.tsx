@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { ClientAuthService as AuthService, ClientMessagingService as MessagingService } from '@/services/client-api.service';
 import { MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -50,35 +50,63 @@ export const ConversationList: React.FC = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Load conversations
-  const loadConversations = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const user = await AuthService.getCurrentUser();
-      if (!user) {
-        router.push('/auth/signin');
-        return;
+  // Load conversations.
+  //
+  // `loading` starts as `true`, so the removed leading `setLoading(true)` was
+  // redundant on mount and made this a synchronous setState source when called
+  // from the effect. `handleRefresh` sets its own `refreshing` flag for the
+  // pull-to-refresh affordance.
+  //
+  // Memoised on exactly what it closes over so the effect can depend on it.
+  // Without the memo it would be a new function each render and the effect
+  // below would refetch the whole list on every render.
+  const loadConversations = useCallback(
+    async (shouldApply: () => boolean = () => true) => {
+      try {
+        const user = await AuthService.getCurrentUser();
+        if (!shouldApply()) return;
+        if (!user) {
+          router.push('/login');
+          return;
+        }
+
+        const data = await MessagingService.getUserConversations();
+        if (!shouldApply()) return;
+        setConversations(data as Conversation[]);
+
+        // Get unread count
+        const count = await MessagingService.getUnreadMessageCount();
+        if (!shouldApply()) return;
+        setUnreadCount(count);
+
+        setError(null);
+      } catch (err: unknown) {
+        if (!shouldApply()) return;
+        setError(err instanceof Error ? err.message : 'Failed to load conversations');
+      } finally {
+        // Guarded: without this, a slow response that arrived after unmount
+        // would still flip `loading`/`refreshing` and re-render a dead component.
+        if (shouldApply()) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
+    },
+    [router]
+  );
 
-      const data = await MessagingService.getUserConversations();
-      setConversations(data as Conversation[]);
-
-      // Get unread count
-      const count = await MessagingService.getUnreadMessageCount();
-      setUnreadCount(count);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to load conversations');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  // Load initial data
+  // Load initial data. See chat-view for the rationale behind routing the
+  // loader through an async IIFE with a cancellation guard.
   useEffect(() => {
-    loadConversations();
-  }, [searchParams]);
+    let cancelled = false;
+    const shouldApply = () => !cancelled;
+    void (async () => {
+      await loadConversations(shouldApply);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, loadConversations]);
 
   // Handle refresh
   const handleRefresh = async () => {
@@ -114,7 +142,10 @@ export const ConversationList: React.FC = () => {
               Please try again or contact support if the issue persists.
             </p>
             <div className="mt-4">
-              <Button onClick={loadConversations}>Try Again</Button>
+              {/* Wrapped: `loadConversations` takes a `shouldApply` guard, so it must never
+                  be handed to onClick directly -- React would pass the click event
+                  as that argument, and `event` is not a function. */}
+                <Button onClick={() => void loadConversations()}>Try Again</Button>
             </div>
           </div>
         </div>
@@ -174,10 +205,17 @@ export const ConversationList: React.FC = () => {
                 .filter((m) => m.user_id !== conversation.conversation_members[0]?.users?.[0]?.id)
                 .map((m) => m.users as unknown as { first_name?: string; last_name?: string });
               
-              // Get the last message (we'd need to fetch this separately in a real app)
-              // For now, we'll just show placeholder
-              const lastMessagePreview = 'Last message preview...';
-              const lastMessageTime = new Date(conversation.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              // The list endpoint returns conversation metadata only
+              // (`MessagingService.getUserConversations`), not message bodies, so
+              // there is nothing real to preview here. The previous hardcoded
+              // "Last message preview..." string was displayed in the position of
+              // a real last message; an honest empty state replaces it and the
+              // timestamp still comes from `conversations.last_message_at`.
+              const hasMessages = Boolean(conversation.last_message_at);
+              const lastMessagePreview = hasMessages ? 'Open to read messages' : 'No messages yet';
+              const lastMessageTime = hasMessages
+                ? new Date(conversation.last_message_at as string).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : '';
               
               // Check if conversation has unread messages
               const hasUnread = !conversation.last_read_at || 

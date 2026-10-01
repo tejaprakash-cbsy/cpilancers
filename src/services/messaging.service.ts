@@ -12,14 +12,16 @@ import type {
   ConversationType,
   ConversationMemberRole,
   NotificationType,
-  UserRole
 } from '@/types/database';
 import {
   AppError,
   UnauthorizedError,
   ValidationError,
-  ForbiddenError,
 } from '@/lib/errors';
+
+// NOTE: `UserRole` and `ForbiddenError` were imported but never used. Role and
+// permission checks in this file are membership-based (is the caller a
+// participant?) rather than role-based, so neither had a call site.
 
 // Message validation constants
 const MAX_MESSAGE_LENGTH = 5000;
@@ -39,11 +41,126 @@ const RATE_LIMIT_MESSAGES_PER_MINUTE = 10;
 const RATE_LIMIT_TIME_WINDOW_MS = 60000; // 1 minute
 const rateLimitStore: Map<string, { count: number; resetTime: number }> = new Map();
 
+/**
+ * Row shapes returned by the messaging queries below.
+ *
+ * These were all `any`. That is not merely a style issue: several of these
+ * values are read by the conversation-list UI and by the membership checks, and
+ * an `any` there means a renamed or dropped column would surface as
+ * `undefined` at runtime rather than as a compile error.
+ */
+
+/** A `conversations` row as embedded in the conversation-list query. */
+export interface ConversationSummary {
+  id: string;
+  conversation_type: ConversationType;
+  job_id: string | null;
+  proposal_id: string | null;
+  contract_id: string | null;
+  title: string | null;
+  last_message_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+/** What `getUserConversations` hands back: the conversation plus this user's membership state. */
+export type ConversationListItem = ConversationSummary & {
+  last_read_at: string | null;
+  is_muted: boolean | null;
+  joined_at: string;
+};
+
+/** A `messages` row, with the conversation metadata the chat view renders. */
+export interface MessageRow {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  content: string;
+  attachments: MessageAttachment[] | null;
+  reply_to_message_id: string | null;
+  is_edited: boolean;
+  is_deleted: boolean;
+  created_at: string;
+  updated_at: string | null;
+  edited_at: string | null;
+  deleted_at: string | null;
+  sender?: { user_id: string; profiles: { first_name: string | null; last_name: string | null; display_name: string | null; avatar_url: string | null } | null } | null;
+}
+
+/** Metadata for an uploaded attachment. */
+export interface MessageAttachment {
+  url: string;
+  name: string;
+  size: number;
+  type: string;
+}
+
+/**
+ * The public profile fields joined onto a user. PostgREST returns a to-one embed
+ * as an object, but supabase-js types it as an array; both shapes are declared
+ * and normalised by `readUserRow` so the roster view does not have to care.
+ */
+export interface JoinedUserProfile {
+  id: string;
+  email: string;
+  profiles: { first_name: string | null; last_name: string | null; display_name: string | null; avatar_url: string | null } | null;
+}
+
+/** A `conversation_members` row with the joined user, for the roster view. */
+export interface ConversationMemberRowWithUser {
+  user_id: string;
+  member_role: ConversationMemberRole;
+  last_read_at: string | null;
+  joined_at: string;
+  users: (JoinedUserProfile | JoinedUserProfile[]) | null;
+}
+
+/** Normalise a to-one embed that may arrive as an object or a one-element array. */
+function readUserRow(embed: ConversationMemberRowWithUser['users']): JoinedUserProfile | null {
+  if (!embed) return null;
+  return Array.isArray(embed) ? (embed[0] ?? null) : embed;
+}
+
+/**
+ * The result of uploading one attachment to storage, as returned by
+ * `uploadAttachment` and consumed by `sendMessage` when it writes the
+ * `message_attachments` row. The camelCase keys here are mapped to snake_case
+ * columns at the insert site.
+ */
+export interface UploadedAttachment {
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  storagePath: string;
+}
+
+/** A stored `notifications` row. */
+export interface NotificationRow {
+  id: string;
+  user_id: string;
+  type: NotificationType;
+  title: string;
+  body: string | null;
+  data: Record<string, unknown> | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+/** Payload delivered by a Supabase realtime `postgres_changes` INSERT. */
+export interface RealtimeMessagePayload {
+  new: Partial<MessageRow> & Record<string, unknown>;
+  old: Record<string, unknown>;
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE';
+  schema: string;
+  table: string;
+  commit_timestamp: string;
+}
+
 export class MessagingService {
   /**
    * Get all conversations for the current user
    */
-  static async getUserConversations(): Promise<any[]> {
+  static async getUserConversations(): Promise<ConversationListItem[]> {
     try {
       const supabase = await createClient();
       
@@ -84,14 +201,26 @@ export class MessagingService {
         throw new AppError('Failed to load conversations', 500);
       }
       
-      // Transform the data to be more usable
-      const transformedConversations = conversations.map((conv: any) => ({
-        ...conv.conversations,
-        last_read_at: conv.last_read_at,
-        is_muted: conv.is_muted,
-        joined_at: conv.joined_at,
-      }));
-      
+      // Flattened from the membership row: the embedded `conversations` value is
+      // a to-one embed, so it is normalised here rather than assumed to be an
+      // object. Rows whose embed came back empty are dropped instead of being
+      // spread into a list item with no `id`, which would have rendered as an
+      // unopenable conversation in the sidebar.
+      const transformedConversations = (conversations ?? [])
+        .map((conv): ConversationListItem | null => {
+          const embedded = Array.isArray(conv.conversations)
+            ? conv.conversations[0]
+            : conv.conversations;
+          if (!embedded) return null;
+          return {
+            ...embedded,
+            last_read_at: conv.last_read_at,
+            is_muted: conv.is_muted,
+            joined_at: conv.joined_at,
+          };
+        })
+        .filter((item): item is ConversationListItem => item !== null);
+
       return transformedConversations;
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -103,7 +232,7 @@ export class MessagingService {
   /**
    * Get a single conversation by ID
    */
-  static async getConversationById(conversationId: string): Promise<any | null> {
+  static async getConversationById(conversationId: string): Promise<ConversationSummary | null> {
     try {
       const supabase = await createClient();
       
@@ -159,7 +288,7 @@ export class MessagingService {
   /**
    * Get messages for a conversation with pagination
    */
-  static async getMessages(conversationId: string, page: number = 1, limit: number = 50): Promise<any[]> {
+  static async getMessages(conversationId: string, page: number = 1, limit: number = 50): Promise<MessageRow[]> {
     try {
       const supabase = await createClient();
       
@@ -220,7 +349,7 @@ export class MessagingService {
     conversationId: string,
     content: string,
     attachments?: File[]
-  ): Promise<any> {
+  ): Promise<MessageRow> {
     try {
       const supabase = await createClient();
       
@@ -298,7 +427,7 @@ export class MessagingService {
       }
       
       // Upload attachments first (if any)
-      const attachmentResults: any[] = [];
+      const attachmentResults: UploadedAttachment[] = [];
       if (attachments && attachments.length > 0) {
         for (const file of attachments) {
           const uploadedAttachment = await this.uploadAttachment(file, user.id);
@@ -472,7 +601,7 @@ export class MessagingService {
       proposalId?: string;
       contractId?: string;
     }
-  ): Promise<any> {
+  ): Promise<ConversationSummary> {
     try {
       const supabase = await createClient();
       const adminSupabase = createAdminClient();
@@ -537,10 +666,39 @@ export class MessagingService {
   /**
    * Get conversation members
    */
-  static async getConversationMembers(conversationId: string, excludeUserId?: string): Promise<any[]> {
+  static async getConversationMembers(conversationId: string, excludeUserId?: string): Promise<ConversationMemberRowWithUser[]> {
     try {
       const supabase = await createClient();
-      
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        throw new UnauthorizedError('User not authenticated');
+      }
+
+      // Membership gate. Without this check any authenticated user could pass an
+      // arbitrary conversationId and enumerate that conversation's roster --
+      // user_id, member_role and the joined `users` row including email and
+      // name -- for conversations they have no part in. Membership is verified
+      // before the member list is read, mirroring getConversationById /
+      // getMessages / sendMessage.
+      const { data: membership, error: membershipError } = await supabase
+        .from('conversation_members')
+        .select('user_id')
+        .eq('conversation_id', conversationId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (membershipError) {
+        console.error('[DB Error - Assert Conversation Membership]:', membershipError);
+        throw new UnauthorizedError('You are not a participant in this conversation');
+      }
+      if (!membership) {
+        throw new UnauthorizedError('You are not a participant in this conversation');
+      }
+
       let query = supabase
         .from('conversation_members')
         .select(`
@@ -560,20 +718,29 @@ export class MessagingService {
       
       if (error) {
         console.error('[DB Error - Get Conversation Members]:', error);
-        return [];
+        throw new AppError('Failed to load conversation members.', 500, 'MEMBERS_FETCH_ERROR', error);
       }
       
-      return members;
+      // Normalise the `users` embed so consumers see a single object rather
+      // than having to branch on PostgREST's response shape.
+      return ((members ?? []) as ConversationMemberRowWithUser[]).map((member) => ({
+        ...member,
+        users: readUserRow(member.users),
+      }));
     } catch (error) {
+      // Authorization failures must surface. Returning `[]` for a
+      // non-participant is indistinguishable from an empty conversation and
+      // turns a refused request into a plausible-looking success.
+      if (error instanceof AppError) throw error;
       console.error('[MessagingService.getConversationMembers]:', error);
-      return [];
+      throw new AppError('Failed to load conversation members.', 500, 'MEMBERS_FETCH_ERROR', error);
     }
   }
 
   /**
    * Upload an attachment
    */
-  static async uploadAttachment(file: File, userId: string): Promise<any> {
+  static async uploadAttachment(file: File, userId: string): Promise<UploadedAttachment> {
     try {
       const supabase = await createClient();
       
@@ -603,7 +770,10 @@ export class MessagingService {
       const filePath = `${userId}/${fileName}`;
       
       // Upload to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase
+      // The stored path is the only thing we need back; `uploadData` (which
+      // also carries signed-URL helpers and metadata we do not use) was bound
+      // but never read, so it was removed to avoid dead work on every upload.
+      const { error: uploadError } = await supabase
         .storage
         .from('message-attachments')
         .upload(filePath, file, {
@@ -632,7 +802,7 @@ export class MessagingService {
   /**
    * Edit a message
    */
-  static async editMessage(messageId: string, newContent: string): Promise<any> {
+  static async editMessage(messageId: string, newContent: string): Promise<MessageRow> {
     try {
       const supabase = await createClient();
       
@@ -755,7 +925,7 @@ export class MessagingService {
     messageId: string,
     reason: string,
     description?: string
-  ): Promise<any> {
+  ): Promise<Record<string, unknown>> {
     try {
       const supabase = await createClient();
       
@@ -868,7 +1038,7 @@ export class MessagingService {
   /**
    * Get unread notifications for current user
    */
-  static async getUnreadNotifications(): Promise<any[]> {
+  static async getUnreadNotifications(): Promise<NotificationRow[]> {
     try {
       const supabase = await createClient();
       
@@ -902,7 +1072,7 @@ export class MessagingService {
    */
   static subscribeToConversation(
     conversationId: string,
-    onMessage: (payload: any) => void
+    onMessage: (payload: RealtimeMessagePayload) => void
   ) {
     const supabase = createBrowserClient();
     
@@ -916,7 +1086,7 @@ export class MessagingService {
           table: 'messages',
           filter: `conversation_id=eq.${conversationId}`,
         },
-        (payload: any) => {
+        (payload: RealtimeMessagePayload) => {
           onMessage(payload);
         }
       )

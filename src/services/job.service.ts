@@ -3,6 +3,129 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import type { Job, JobStatus } from '@/types/database';
 import { AppError } from '@/lib/errors';
 
+/**
+ * Statuses a job may hold while it is legitimately visible in the public
+ * marketplace. Anything else -- a draft a client has not published, a job that
+ * has been cancelled, deleted or completed -- must never be enumerable by an
+ * unauthenticated or unrelated caller.
+ */
+export const PUBLICLY_LISTABLE_JOB_STATUSES: JobStatus[] = ['open', 'in_review'];
+
+/**
+ * What a given viewer is allowed to see when listing jobs.
+ *
+ * `allowedStatuses` is the ceiling on statuses. `draftOwnerClientId` is the
+ * `client_profiles.id` whose drafts the viewer may read; it is `null` when the
+ * viewer may read no drafts at all. The two are needed together because
+ * "may see drafts" and "is the owner of every draft the query will return" are
+ * not the same statement -- without the id, `getJobs` would have to return
+ * every client's drafts.
+ */
+export interface JobVisibility {
+  allowedStatuses: JobStatus[];
+  draftOwnerClientId: string | null;
+}
+
+/** UUID shape check, used before interpolating an id into a PostgREST filter. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value: string | null | undefined): value is string {
+  return typeof value === 'string' && UUID_RE.test(value);
+}
+
+/**
+ * Resolve which job statuses a given viewer may see, and whose drafts.
+ *
+ * Anonymous and non-client viewers are limited to the public set. A user with a
+ * `client_profiles` row additionally sees *their own* drafts so the
+ * create/edit workflow can find the job it just made -- which is why the
+ * owning `client_profiles.id` is returned alongside the statuses. Callers pass
+ * both into `getJobs`, which intersects the statuses with any `status` filter
+ * the request supplied (narrowing only) and scopes drafts to that client id.
+ *
+ * Fails closed on an unreadable ownership check.
+ */
+export async function resolveJobVisibility(
+  viewerUserId: string | null
+): Promise<JobVisibility> {
+  const publicOnly = (): JobVisibility => ({
+    allowedStatuses: [...PUBLICLY_LISTABLE_JOB_STATUSES],
+    draftOwnerClientId: null,
+  });
+
+  if (!viewerUserId) return publicOnly();
+
+  try {
+    const { data: clientProfile } = await createAdminClient()
+      .from('client_profiles')
+      .select('id')
+      .eq('user_id', viewerUserId)
+      .maybeSingle();
+
+    if (!clientProfile || !isUuid(clientProfile.id)) return publicOnly();
+    return {
+      allowedStatuses: [...PUBLICLY_LISTABLE_JOB_STATUSES, 'draft'],
+      draftOwnerClientId: clientProfile.id,
+    };
+  } catch (error) {
+    // Fail closed: an unreadable ownership check must not widen visibility.
+    console.error('[JobService.resolveJobVisibility]:', error);
+    return publicOnly();
+  }
+}
+
+/**
+ * Resolve which job statuses a given viewer may see.
+ *
+ * Thin wrapper over {@link resolveJobVisibility} for callers that only need the
+ * status ceiling and have no path to scope drafts.
+ */
+export async function jobVisibility(
+  viewerUserId: string | null
+): Promise<JobStatus[]> {
+  return (await resolveJobVisibility(viewerUserId)).allowedStatuses;
+}
+
+/**
+ * The `client_profiles!inner(user_id)` embed used to resolve a job's owner.
+ *
+ * The embed is a many-to-one relation, so PostgREST returns an object -- but
+ * supabase-js types the column as an array of rows because it cannot infer the
+ * cardinality from the FK. Reading `client_profiles.user_id` off that value
+ * directly therefore always yielded `undefined`, which made every ownership
+ * check below compare `undefined !== userId` and reject *everyone*, including
+ * the real owner. Both shapes are normalised here so ownership resolves
+ * correctly regardless of which one the client returns.
+ */
+type JobOwnerEmbed = { user_id: string } | { user_id: string }[] | null;
+
+function readOwnerUserId(embed: JobOwnerEmbed): string | null {
+  if (!embed) return null;
+  const row = Array.isArray(embed) ? embed[0] : embed;
+  return row?.user_id ?? null;
+}
+
+type JobWithOwner = { status: string; client_profiles: JobOwnerEmbed };
+
+/**
+ * Resolve the owning user and current status for a job, or null when the job
+ * does not exist or the client profile row is missing.
+ */
+async function resolveJobOwnership(
+  jobId: string
+): Promise<{ userId: string; status: string } | null> {
+  const { data, error } = await createAdminClient()
+    .from('jobs')
+    .select('status, client_profiles!inner(user_id)')
+    .eq('id', jobId)
+    .single();
+
+  if (error || !data) return null;
+  const owner = readOwnerUserId((data as unknown as JobWithOwner).client_profiles);
+  if (!owner) return null;
+  return { userId: owner, status: data.status };
+}
+
 export class JobService {
   /**
    * Get a job by ID
@@ -64,9 +187,19 @@ export class JobService {
     budgetMax?: number;
     experienceMin?: number;
     projectType?: string;
+    /** Real `budget_type` enum: 'fixed_price' | 'hourly_rate' | 'range'. */
+    budgetType?: string;
     status?: JobStatus[];
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
+    allowedStatuses?: JobStatus[];
+    /**
+     * `client_profiles.id` whose drafts the viewer may read, from
+     * {@link resolveJobVisibility}. Required whenever `allowedStatuses`
+     * contains `'draft'`; without it drafts are dropped rather than returned
+     * unscoped.
+     */
+    draftOwnerClientId?: string | null;
   }): Promise<{ jobs: Job[]; total: number; page: number; limit: number }> {
     try {
       const supabase = await createClient();
@@ -129,24 +262,84 @@ export class JobService {
         query = query.lte('budget_fixed_cents', options.budgetMax);
       }
 
-      // Experience Min
-      if (options.experienceMin !== undefined) {
-        query = query.gte('experience_required', options.experienceMin);
+      // Budget type.
+      //
+      // The previous `projectType` and `experienceMin` filters were wired to
+      // `project_type` and `experience_required`, neither of which exists on the
+      // `jobs` table in any migration. PostgREST rejected the entire query as
+      // soon as either filter was supplied, so using the "Project type" or
+      // "Experience level" controls on /jobs returned a 500. `budget_type` is a
+      // real enum ('fixed_price' | 'hourly_rate' | 'range') and is what those
+      // controls actually offered.
+      if (options.budgetType) {
+        query = query.eq('budget_type', options.budgetType);
       }
 
-      // Project Type
-      if (options.projectType) {
-        query = query.ilike('project_type', `%${options.projectType}%`);
+      // Status visibility, in three ordered steps.
+      //
+      //   1. `allowedStatuses` (when supplied) is the ceiling. Without it the
+      //      public set applies, so no caller can read the whole table.
+      //   2. A caller-supplied `status` list is INTERSECTED with that ceiling,
+      //      so `?status=draft` from an anonymous visitor matches nothing
+      //      rather than every row.
+      //   3. Drafts are visible only to their owning client, so when drafts are
+      //      in scope the filter becomes
+      //      `status in (public) OR (status = draft AND client_id = <viewer>)`.
+      const ceiling = options.allowedStatuses ?? PUBLICLY_LISTABLE_JOB_STATUSES;
+      let effective: JobStatus[] = options.status?.length
+        ? options.status.filter((status) => ceiling.includes(status))
+        : [...ceiling];
+
+      // Drafts are meaningless without the owner id to scope them to. If it is
+      // absent or malformed, drop drafts instead of returning every client's.
+      const draftScope =
+        effective.includes('draft') && isUuid(options.draftOwnerClientId)
+          ? options.draftOwnerClientId
+          : null;
+      if (effective.includes('draft') && !draftScope) {
+        effective = effective.filter((status) => status !== 'draft');
       }
 
-      // Status
-      if (options.status?.length) {
-        query = query.in('status', options.status);
+      if (effective.length === 0) {
+        // This viewer may not see anything matching the request. Short-circuit
+        // rather than sending a query with no status filter at all.
+        return { jobs: [], total: 0, page, limit };
       }
 
-      // Sorting
-      const sortBy = options.sortBy ?? 'created_at';
-      const sortOrder = options.sortOrder ?? 'desc';
+      const publicPart = draftScope ? effective.filter((status) => status !== 'draft') : effective;
+      if (draftScope && publicPart.length > 0) {
+        query = query.or(
+          [
+            ...publicPart.map((status) => `status.eq.${status}`),
+            // `draftScope` is validated as a UUID above and originates from the
+            // `client_profiles` row, never from request input.
+            `and(status.eq.draft,client_id.eq.${draftScope})`,
+          ].join(',')
+        );
+      } else {
+        query = query.in('status', effective);
+      }
+
+      // Sorting.
+      // `sortBy` reaches PostgREST's `order=` parameter, so it is checked
+      // against an allowlist at runtime rather than trusted. The `/api/jobs`
+      // route does not forward a caller-supplied sortBy today, but this service
+      // is reachable from other call sites and the check is the actual
+      // boundary.
+      const allowedSortFields = [
+        'created_at',
+        'updated_at',
+        'views_count',
+        'title',
+        'budget_fixed_cents',
+      ] as const;
+      const requestedSort = options.sortBy ?? 'created_at';
+      const sortBy = allowedSortFields.includes(
+        requestedSort as (typeof allowedSortFields)[number]
+      )
+        ? requestedSort
+        : 'created_at';
+      const sortOrder = options.sortOrder === 'asc' ? 'asc' : 'desc';
       query = query.order(sortBy, { ascending: sortOrder === 'asc' });
 
       // Pagination
@@ -258,13 +451,13 @@ export class JobService {
   static async updateJob(id: string, userId: string, data: Partial<Job>): Promise<Job> {
     try {
       const adminSupabase = createAdminClient();
-      const { data: owner } = await adminSupabase.from('jobs').select('*, client_profiles!inner(user_id)').eq('id', id).single();
-      if (!owner || (owner as any).client_profiles?.user_id !== userId) throw new AppError('You do not own this job', 403);
+      const ownership = await resolveJobOwnership(id);
+      if (!ownership || ownership.userId !== userId) throw new AppError('You do not own this job', 403);
       const allowedFields = ['title', 'description_markdown', 'deliverables_markdown', 'integration_type', 'source_systems', 'target_systems', 'protocols', 'expected_throughput_tier', 'complexity', 'estimated_duration_weeks', 'budget_type', 'budget_fixed_cents', 'budget_min_cents', 'budget_max_cents', 'expires_at'];
-      const updates = Object.fromEntries(Object.entries(data).filter(([key]) => allowedFields.includes(key)));
+      const updates: Record<string, unknown> = Object.fromEntries(Object.entries(data).filter(([key]) => allowedFields.includes(key)));
       if (data.status !== undefined) {
         const allowedStatus: Record<string, string[]> = { draft: ['open', 'cancelled'], open: ['closed', 'in_review'], in_review: ['closed'], hired: ['closed'] };
-        if (!allowedStatus[owner.status]?.includes(data.status)) throw new AppError('Invalid job status transition', 409);
+        if (!allowedStatus[ownership.status]?.includes(data.status)) throw new AppError('Invalid job status transition', 409);
         updates.status = data.status;
       }
       const { data: job, error } = await adminSupabase
@@ -294,15 +487,11 @@ export class JobService {
   static async publishJob(id: string, userId: string): Promise<void> {
     try {
       const adminSupabase = createAdminClient();
-      const { data: job, error: fetchError } = await adminSupabase
-        .from('jobs')
-        .select('status, client_profiles!inner(user_id)')
-        .eq('id', id)
-        .single();
-      if (fetchError || !job || (job as any).client_profiles?.user_id !== userId) {
+      const ownership = await resolveJobOwnership(id);
+      if (!ownership || ownership.userId !== userId) {
         throw new AppError('Job not found', 404);
       }
-      if (job.status !== 'draft') {
+      if (ownership.status !== 'draft') {
         throw new AppError('Only draft jobs can be published', 400);
       }
       const { error } = await adminSupabase
@@ -326,17 +515,13 @@ export class JobService {
   static async closeJob(id: string, userId: string): Promise<void> {
     try {
       const adminSupabase = createAdminClient();
-      const { data: job, error: fetchError } = await adminSupabase
-        .from('jobs')
-        .select('status, client_profiles!inner(user_id)')
-        .eq('id', id)
-        .single();
-      if (fetchError || !job || (job as any).client_profiles?.user_id !== userId) {
+      const ownership = await resolveJobOwnership(id);
+      if (!ownership || ownership.userId !== userId) {
         throw new AppError('Job not found', 404);
       }
       // Allow closing jobs that are open, in_review, hired
       const closeableStatuses = ['open', 'in_review', 'hired'];
-      if (!closeableStatuses.includes(job.status as JobStatus)) {
+      if (!closeableStatuses.includes(ownership.status)) {
         throw new AppError('Job cannot be closed in current status', 400);
       }
       const { error } = await adminSupabase
@@ -355,26 +540,33 @@ export class JobService {
   }
 
   /**
-   * Delete a job (set status to deleted)
+   * Delete a job.
+   *
+   * Only an unpublished draft may be deleted, and "deleted" is achieved by
+   * moving it to `cancelled` rather than removing the row: `jobs` is referenced
+   * by `proposals`, `job_skills` and `conversations`, and hard-deleting a job
+   * would cascade those away with it. `cancelled` is also already an allowed
+   * `draft -> cancelled` transition in `updateJob`.
+   *
+   * The previous implementation wrote `status: 'deleted'`, which is not a member
+   * of the `job_status` enum ('draft' | 'open' | 'in_review' | 'hired' |
+   * 'completed' | 'cancelled' | 'closed'), so every call failed at the database
+   * with a 22P02 enum error surfaced as a generic 500.
    */
   static async deleteJob(id: string, userId: string): Promise<void> {
     try {
       const adminSupabase = createAdminClient();
-      const { data: job, error: fetchError } = await adminSupabase
-        .from('jobs')
-        .select('status, client_profiles!inner(user_id)')
-        .eq('id', id)
-        .single();
-      if (fetchError || !job || (job as any).client_profiles?.user_id !== userId) {
+      const ownership = await resolveJobOwnership(id);
+      if (!ownership || ownership.userId !== userId) {
         throw new AppError('Job not found', 404);
       }
       // Only allow deletion of draft jobs
-      if (job.status !== 'draft') {
+      if (ownership.status !== 'draft') {
         throw new AppError('Only draft jobs can be deleted', 400);
       }
       const { error } = await adminSupabase
         .from('jobs')
-        .update({ status: 'deleted', updated_at: new Date().toISOString() })
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
         .eq('id', id);
       if (error) {
         console.error('[DB Error - Delete Job]:', error);
