@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...but the placeholder template must stay tracked, otherwise a new checkout has
+# no documented list of required variables. Verified to contain placeholder values
+# only -- never real credentials.
+!.env.example
 
 # vercel
 .vercel
