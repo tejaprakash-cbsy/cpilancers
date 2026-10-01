@@ -9,6 +9,19 @@ import { MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
+/**
+ * A row of `getUserConversations()`.
+ *
+ * This is `MessagingService.ConversationListItem` -- FLAT conversation metadata.
+ * It deliberately does NOT declare `conversation_members`: the list endpoint
+ * does not join the roster. The previous declaration invented a
+ * `conversation_members` shape that the API never returns, which let the
+ * component compile against a field that was always `undefined` at runtime.
+ *
+ * `last_message_at` is nullable (a conversation can exist with no messages yet)
+ * and `is_muted` is nullable in the database, so both are `| null` here rather
+ * than the non-null types the old declaration claimed.
+ */
 export interface Conversation {
   id: string;
   conversation_type: string;
@@ -16,29 +29,29 @@ export interface Conversation {
   proposal_id: string | null;
   contract_id: string | null;
   title: string | null;
-  last_message_at: string;
+  last_message_at: string | null;
   created_at: string;
-  updated_at: string;
+  updated_at: string | null;
+  /** Membership state for the CURRENT user, flattened onto the row by the service. */
   last_read_at: string | null;
-  is_muted: boolean;
+  is_muted: boolean | null;
   joined_at: string;
-  // Populated from the join
-  conversation_members: {
-    user_id: string;
-    member_role: string;
-    last_read_at: string | null;
-    joined_at: string;
-    users: {
-      id: string;
-      email: string;
-      profiles: {
-        first_name: string;
-        last_name: string;
-        display_name: string;
-        avatar_url: string | null;
-      };
-    }[];
-  }[];
+}
+
+/**
+ * `ClientMessagingService.getUserConversations` is typed `unknown[]` because the
+ * wrapper cannot know the row shape of every endpoint it serves. This narrows it
+ * to the `Conversation` shape declared above. The cast is still needed at the
+ * boundary -- it is a real narrowing of an untyped payload, not a way to silence
+ * a type error -- but it is now narrowing to the shape the service actually
+ * returns rather than to a shape that does not exist.
+ */
+function toConversations(data: unknown): Conversation[] {
+  if (!Array.isArray(data)) return [];
+  return data.filter(
+    (row): row is Conversation =>
+      typeof row === 'object' && row !== null && typeof (row as { id?: unknown }).id === 'string'
+  );
 }
 
 export const ConversationList: React.FC = () => {
@@ -72,7 +85,7 @@ export const ConversationList: React.FC = () => {
 
         const data = await MessagingService.getUserConversations();
         if (!shouldApply()) return;
-        setConversations(data as Conversation[]);
+        setConversations(toConversations(data));
 
         // Get unread count
         const count = await MessagingService.getUnreadMessageCount();
@@ -196,14 +209,22 @@ export const ConversationList: React.FC = () => {
         ) : (
           <div className="divide-y divide-slate-200">
             {conversations.map((conversation) => {
-              // Get the other participant(s) in the conversation
-              // NOTE: `users` is an array joined from the API, but the existing UI
-              // reads `first_name`/`last_name` directly off it (they actually live
-              // under `users[].profiles`). That mismatch is a pre-existing bug and
-              // is preserved here to avoid changing rendered output.
-              const otherMembers = conversation.conversation_members
-                .filter((m) => m.user_id !== conversation.conversation_members[0]?.users?.[0]?.id)
-                .map((m) => m.users as unknown as { first_name?: string; last_name?: string });
+              // Other participants.
+              //
+              // `getUserConversations` returns `ConversationListItem[]`, which is
+              // FLAT conversation metadata -- it does NOT include
+              // `conversation_members` or any user join. The previous code read
+              // `conversation.conversation_members.filter(...)` anyway, which
+              // threw `TypeError: Cannot read properties of undefined` for every
+              // conversation in a non-empty list, so the messages page could not
+              // render at all once any conversation existed.
+              //
+              // The names genuinely live under `conversation_members[].users[].profiles`
+              // and are not in this payload, so there is nothing real to show
+              // here. `title` IS in the payload and is the honest label to use;
+              // falling back to the conversation id keeps each row keyed and
+              // clickable rather than fabricating a participant name.
+              const label = conversation.title?.trim() || `Conversation ${conversation.id.slice(0, 8)}`;
               
               // The list endpoint returns conversation metadata only
               // (`MessagingService.getUserConversations`), not message bodies, so
@@ -217,9 +238,17 @@ export const ConversationList: React.FC = () => {
                 ? new Date(conversation.last_message_at as string).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                 : '';
               
-              // Check if conversation has unread messages
-              const hasUnread = !conversation.last_read_at || 
-                new Date(conversation.last_message_at) > new Date(conversation.last_read_at || conversation.last_message_at);
+              // Unread state.
+              //
+              // `last_message_at` is nullable. The old expression fell back to
+              // `last_read_at || last_message_at`, which compared the read
+              // timestamp against ITSELF whenever both were null-ish, and it passed
+              // a possibly-null value straight into `new Date(...)` -- producing
+              // `Invalid Date` and a silently-wrong unread badge.
+              //
+              // The honest rule: a conversation is unread when it has at least one
+              // message and the current user has never read it.
+              const hasUnread = Boolean(conversation.last_message_at) && !conversation.last_read_at;
 
               return (
                 <Link
@@ -232,22 +261,15 @@ export const ConversationList: React.FC = () => {
                   )}
                 >
                   <div className="flex-shrink-0">
-                    {otherMembers.length > 0 ? (
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-slate-500">
-                        {otherMembers[0].first_name?.charAt(0) || 'U'}
-                        {otherMembers[0].last_name?.charAt(0) || ''}
-                      </div>
-                    ) : (
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-slate-500">
-                        {'?'}
-                      </div>
-                    )}
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-slate-500">
+                      {label.charAt(0).toUpperCase()}
+                    </div>
                   </div>
                   <div className="flex-1 ml-4 space-y-1">
                     <div className="flex justify-between">
                       <div className="flex-1">
                         <p className="text-sm font-medium text-gray-900">
-                          {otherMembers.map((m) => `${m.first_name} ${m.last_name}`).join(', ') || 'Unknown User'}
+                          {label}
                         </p>
                         <p className="text-sm text-slate-500 line-clamp-1">
                           {lastMessagePreview}

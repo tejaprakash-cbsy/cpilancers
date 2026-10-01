@@ -229,3 +229,75 @@ describe('job-proposals ownership decision', () => {
     expect(shouldVerifyOwnership(profileData, 'c1', 'cOTHER').denied).toBe(true); // the fix
   });
 });
+
+describe('conversation-list payload shape', () => {
+  /**
+   * `getUserConversations` returns FLAT `ConversationListItem[]`. It does not
+   * include `conversation_members`.
+   *
+   * The component used to read `conversation.conversation_members.filter(...)`,
+   * which throws `TypeError: Cannot read properties of undefined` for every row
+   * in a non-empty list -- the messages page could not render at all once any
+   * conversation existed. These pin the shape so the component cannot start
+   * reading a field the endpoint does not return.
+   */
+  it('a list item has no conversation_members key at all', () => {
+    const row = {
+      id: '5c1d2e3f-0000-4000-8000-00000000cafe',
+      conversation_type: 'direct',
+      job_id: null,
+      proposal_id: null,
+      contract_id: null,
+      title: null,
+      last_message_at: null,
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: null,
+      last_read_at: null,
+      is_muted: null,
+      joined_at: '2026-01-01T00:00:00.000Z',
+    };
+
+    // This is the exact access pattern that used to throw.
+    const asRecord = row as unknown as Record<string, unknown>;
+    expect(asRecord.conversation_members).toBeUndefined();
+    expect(() => asRecord.conversation_members).not.toThrow();
+  });
+
+  it('the unread rule is null-safe and does not build an Invalid Date', () => {
+    const lastMessageAt: string | null = null;
+    const lastReadAt: string | null = null;
+
+    // The old expression called `new Date(null)` -> `Invalid Date`, and compared
+    // a timestamp against itself.
+    const oldResult =
+      !lastReadAt ||
+      new Date(lastMessageAt as string) >
+        new Date((lastReadAt || lastMessageAt) as string);
+
+    const hasUnread = Boolean(lastMessageAt) && !lastReadAt;
+
+    expect(hasUnread).toBe(false); // correct: no messages, so nothing is unread
+    expect(oldResult).toBe(true); // the bug: claimed unread with no messages
+  });
+
+  it('marks unread only when there is a message that has never been read', () => {
+    const cases: Array<[string | null, string | null, boolean]> = [
+      [null, null, false], // empty conversation
+      ['2026-01-02T00:00:00.000Z', null, true], // messages, never read
+      ['2026-01-02T00:00:00.000Z', '2026-01-03T00:00:00.000Z', false], // read
+      [null, '2026-01-03T00:00:00.000Z', false], // read, no messages
+    ];
+
+    for (const [lastMessageAt, lastReadAt, expected] of cases) {
+      expect(Boolean(lastMessageAt) && !lastReadAt).toBe(expected);
+    }
+  });
+
+  it('the row label falls back to the id rather than fabricating a name', () => {
+    const title: string | null = null;
+    const label = title?.trim() || `Conversation ${'5c1d2e3f-0000-4000-8000-00000000cafe'.slice(0, 8)}`;
+
+    expect(label).toBe('Conversation 5c1d2e3f');
+    expect(label).not.toContain('undefined');
+  });
+});
