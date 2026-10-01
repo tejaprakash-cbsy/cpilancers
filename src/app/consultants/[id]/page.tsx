@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Calendar, CheckCircle2, Clock3, MessageCircle, Star } from 'lucide-react';
 import { ClientProfileService as ProfileService } from '@/services/client-api.service';
@@ -18,10 +18,47 @@ type Certification = { id: string; verification_status: string; credential_id: s
 
 export default function ConsultantPublicProfilePage() {
   const { id } = useParams(); const router = useRouter(); const [profile, setProfile] = useState<Profile | null>(null); const [consultant, setConsultant] = useState<ConsultantProfile | null>(null); const [skills, setSkills] = useState<Skill[]>([]); const [certifications, setCertifications] = useState<Certification[]>([]); const [portfolio, setPortfolio] = useState<PortfolioItemData[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null);
-  // The loader intentionally remains local to preserve the existing service flow.
-  // eslint-disable-next-line react-hooks/immutability, react-hooks/exhaustive-deps
-  useEffect(() => { void load(); }, [id]);
-  async function load() { try { const data = await ProfileService.getConsultantProfileById(id as string); if (!data || !data.profile) { setError('Consultant not found'); return; } setProfile(data.profile); setConsultant(data.consultant); setSkills(data.skills as Skill[]); setCertifications(data.certifications as Certification[]); setPortfolio(data.portfolios as PortfolioItemData[]); } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Failed to load profile'); } finally { setLoading(false); } }
+  /**
+   * Load the public consultant profile.
+   *
+   * `shouldApply` is the cancelled-flag guard, checked BEFORE every state write,
+   * so navigating between two consultants cannot render the first one's data
+   * under the second one's URL when responses land out of order.
+   */
+  const load = useCallback(
+    async (shouldApply: () => boolean = () => true) => {
+      try {
+        const data = await ProfileService.getConsultantProfileById(id as string);
+        if (!shouldApply()) return;
+        if (!data || !data.profile) {
+          setError('Consultant not found');
+          return;
+        }
+        setProfile(data.profile);
+        setConsultant(data.consultant);
+        setSkills(data.skills as Skill[]);
+        setCertifications(data.certifications as Certification[]);
+        setPortfolio(data.portfolios as PortfolioItemData[]);
+      } catch (err: unknown) {
+        if (!shouldApply()) return;
+        setError(err instanceof Error ? err.message : 'Failed to load profile');
+      } finally {
+        if (shouldApply()) setLoading(false);
+      }
+    },
+    [id]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const shouldApply = () => !cancelled;
+    void (async () => {
+      await load(shouldApply);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [load]);
   if (loading) return <main className="flex min-h-screen items-center justify-center bg-[#f5f6f8]"><div className="h-10 w-10 animate-spin rounded-full border-2 border-[#dde1e7] border-t-[#365cf5]" /></main>;
   if (error || !profile || !consultant) return <main className="flex min-h-screen items-center justify-center bg-[#f5f6f8] p-6"><Card className="max-w-md p-6 text-center"><h1 className="text-lg font-semibold">{error || 'Profile not found'}</h1><Button className="mt-5" onClick={() => router.push('/')}>Go home</Button></Card></main>;
   const name = profile.display_name || `${profile.first_name} ${profile.last_name}`;

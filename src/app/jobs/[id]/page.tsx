@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Bookmark, Check, CheckCircle2, Clock3, DollarSign, MapPin, ShieldCheck } from 'lucide-react';
 import { ClientJobService as JobService, ClientAuthService as AuthService } from '@/services/client-api.service';
@@ -15,10 +15,55 @@ type JobDetail = Job & { project_type?: string | null; experience_required?: num
 export default function JobDetailPage() {
   const { id } = useParams(); const router = useRouter();
   const [job, setJob] = useState<JobDetail | null>(null); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [isOwner, setIsOwner] = useState(false); const [isConsultant, setIsConsultant] = useState(false);
-  // The loader intentionally remains local to preserve the existing service flow.
-  // eslint-disable-next-line react-hooks/immutability, react-hooks/exhaustive-deps
-  useEffect(() => { void loadJobData(); }, [id]);
-  async function loadJobData() { try { setLoading(true); setError(null); const data = await JobService.getJobById(id as string); if (!data) { setError('Job not found'); return; } setJob(data); const user = await AuthService.getCurrentUser(); if (user) { setIsConsultant(user.role === 'consultant'); if (user.role === 'client') setIsOwner(data.client_id === await JobService.getClientIdByUserId(user.id)); } } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Failed to load job'); } finally { setLoading(false); } }
+  /**
+   * Load the job and work out what the viewer is allowed to do with it.
+   *
+   * `shouldApply` is the cancelled-flag guard, checked BEFORE every state write.
+   * Without it, navigating from job A to job B while A's request is still in
+   * flight lets A's response land last and render A under B's URL.
+   */
+  const loadJobData = useCallback(
+    async (shouldApply: () => boolean = () => true) => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await JobService.getJobById(id as string);
+        if (!shouldApply()) return;
+        if (!data) {
+          setError('Job not found');
+          return;
+        }
+        setJob(data);
+        const user = await AuthService.getCurrentUser();
+        if (!shouldApply()) return;
+        if (user) {
+          setIsConsultant(user.role === 'consultant');
+          if (user.role === 'client') {
+            const clientId = await JobService.getClientIdByUserId(user.id);
+            if (!shouldApply()) return;
+            setIsOwner(data.client_id === clientId);
+          }
+        }
+      } catch (err: unknown) {
+        if (!shouldApply()) return;
+        setError(err instanceof Error ? err.message : 'Failed to load job');
+      } finally {
+        if (shouldApply()) setLoading(false);
+      }
+    },
+    [id]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const shouldApply = () => !cancelled;
+    void (async () => {
+      await loadJobData(shouldApply);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadJobData]);
   async function mutate(action: () => Promise<unknown>) { try { await action(); router.refresh(); } catch (err: unknown) { setError(err instanceof Error ? err.message : 'Unable to update job'); } }
   if (loading) return <main className="flex min-h-screen items-center justify-center bg-[#f5f6f8]"><div className="text-center"><div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-[#dde1e7] border-t-[#365cf5]" /><p className="mt-4 text-sm text-[#667085]">Loading job details...</p></div></main>;
   if (error || !job) return <main className="flex min-h-screen items-center justify-center bg-[#f5f6f8] p-6"><Card className="max-w-md p-6 text-center"><h1 className="text-lg font-semibold">{error || 'Job not found'}</h1><p className="mt-2 text-sm text-[#667085]">The job you are looking for may no longer be available.</p><Button className="mt-5" onClick={() => router.push('/jobs')}>Go to job listings</Button></Card></main>;

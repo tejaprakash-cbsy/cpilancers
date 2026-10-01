@@ -23,7 +23,27 @@ export default function ConsultantDashboardPage() {
   // A full reload IS still correct after sign-out (to drop all in-memory state
   // and any cached server components); that call site is left as-is.
   const router = useRouter();
-  useEffect(() => { ClientProfileService.getProfile().then(async (profile) => { const [proposalData, conversations] = await Promise.all([ClientProposalService.getProposalsByConsultant({ page: 1, limit: 5 }), ClientMessagingService.getUserConversations()]); setState({ profile, proposals: proposalData.proposals, conversations, loading: false, error: null }); }).catch((err: unknown) => setState((current) => ({ ...current, loading: false, error: err instanceof Error ? err.message : 'Unable to load dashboard' }))); }, []);
+  // Cancellation flag guards every state write, so a response that resolves after
+  // the user has navigated away cannot overwrite state on an unmounted
+  // component.
+  useEffect(() => {
+    let cancelled = false;
+
+    ClientProfileService.getProfile()
+      .then(async (profile) => {
+        const [proposalData, conversations] = await Promise.all([ClientProposalService.getProposalsByConsultant({ page: 1, limit: 5 }), ClientMessagingService.getUserConversations()]);
+        if (cancelled) return;
+        setState({ profile, proposals: proposalData.proposals, conversations, loading: false, error: null });
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setState((current) => ({ ...current, loading: false, error: err instanceof Error ? err.message : 'Unable to load dashboard' }));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // No avatar initials while loading: the profile that supplies them has not
   // loaded yet, and a hardcoded "MC" would attribute the account to a person
   // who may not exist. The shell renders an empty circle until data arrives.

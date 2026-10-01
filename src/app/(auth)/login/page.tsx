@@ -131,11 +131,20 @@ export default function LoginPage() {
     }
     setError('');
     try {
-      await fetch('/api/auth/reset-password?action=send', {
+      const response = await fetch('/api/auth/reset-password?action=send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
+
+      // `fetch` only rejects on a network-level failure. A 4xx/5xx resolves
+      // normally, so without this check the user was shown the reassuring
+      // "reset link is on its way" message even when the request was rejected --
+      // telling them an email was sent when it demonstrably was not.
+      if (!response.ok) {
+        throw new Error('Unable to send the reset email right now.');
+      }
+
       // Deliberately neutral copy: the endpoint is written to avoid disclosing
       // whether an account exists, so the UI must not imply either outcome.
       setNotice('If an account exists for that address, a password reset link is on its way.');

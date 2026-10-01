@@ -15,8 +15,31 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Cancellation flag guards every state write.
+  //
+  // `getProfile()` is a single await followed by `.then(setData)`. If the user
+  // navigates away before it resolves, `setData` runs on an unmounted component;
+  // and `setLoading(false)` in `finally` would flip a flag the UI no longer
+  // reads. The flag is checked before each write, not after the promise settles.
   useEffect(() => {
-    ProfileService.getProfile().then(setData).catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unable to load profile')).finally(() => setLoading(false));
+    let cancelled = false;
+
+    ProfileService.getProfile()
+      .then((profile) => {
+        if (cancelled) return;
+        setData(profile);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : 'Unable to load profile');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (loading) return <main className="flex min-h-screen items-center justify-center bg-[#f5f6f8]"><div className="h-10 w-10 animate-spin rounded-full border-2 border-[#dde1e7] border-t-[#365cf5]" /></main>;

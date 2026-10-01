@@ -23,7 +23,26 @@ export default function ClientDashboardPage() {
   // A full reload IS still correct after sign-out (to drop all in-memory state
   // and any cached server components); that call site is left as-is.
   const router = useRouter();
-  useEffect(() => { Promise.all([ClientProfileService.getProfile(), ClientJobService.getJobs({ page: 1, limit: 5, status: ['draft', 'open', 'in_review', 'hired'] }), ClientMessagingService.getUserConversations()]).then(([profile, jobs, conversations]) => setState({ profile, jobs: jobs.jobs, conversations, loading: false, error: null })).catch((err: unknown) => setState((current) => ({ ...current, loading: false, error: err instanceof Error ? err.message : 'Unable to load dashboard' }))); }, []);
+  // Cancellation flag guards every state write, so a response that resolves after
+  // the user has navigated away cannot overwrite state on an unmounted
+  // component.
+  useEffect(() => {
+    let cancelled = false;
+
+    Promise.all([ClientProfileService.getProfile(), ClientJobService.getJobs({ page: 1, limit: 5, status: ['draft', 'open', 'in_review', 'hired'] }), ClientMessagingService.getUserConversations()])
+      .then(([profile, jobs, conversations]) => {
+        if (cancelled) return;
+        setState({ profile, jobs: jobs.jobs, conversations, loading: false, error: null });
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setState((current) => ({ ...current, loading: false, error: err instanceof Error ? err.message : 'Unable to load dashboard' }));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // No avatar initials while loading: the profile that supplies them has not
   // loaded yet, and a hardcoded "AN" would attribute the account to a person
   // who may not exist. The shell renders an empty circle until data arrives.
