@@ -10,18 +10,27 @@ import {
   X,
   BriefcaseBusiness,
   UserRound,
-  UsersRound,
 } from 'lucide-react';
+import { ClientAuthService } from '@/services/client-api.service';
+import type { User } from '@/types/database';
 
 export const Header: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const [user, setUser] = React.useState<User | null>(null);
+  const [loading, setLoading] = React.useState(true);
   const pathname = usePathname();
 
+  React.useEffect(() => {
+    ClientAuthService.getCurrentUser()
+      .then((data) => setUser(data))
+      .catch(() => setUser(null))
+      .finally(() => setLoading(false));
+  }, []);
+
   const navLinks = [
-    { name: 'Find Work', href: '/jobs', icon: BriefcaseBusiness },
-    { name: 'Find Talent', href: '/consultants', icon: UsersRound },
     { name: 'Browse Jobs', href: '/jobs', icon: BriefcaseBusiness },
     { name: 'Browse Freelancers', href: '/consultants', icon: UserRound },
+    { name: 'Community', href: '/forum', icon: UserRound },
   ];
 
   const isActive = (href: string) => pathname === href;
@@ -56,12 +65,27 @@ export const Header: React.FC = () => {
 
           {/* Desktop Right Actions */}
           <div className="hidden md:flex items-center gap-3">
-            <Link href="/login" className="text-[12px] text-[#365cf5] hover:text-[#2445c7]">
-              Log in
-            </Link>
-            <Link href="/register">
-              <Button variant="primary" size="sm">Sign up</Button>
-            </Link>
+            {loading ? (
+              <div className="w-16 h-8 animate-pulse bg-slate-100 rounded-md"></div>
+            ) : user ? (
+              <>
+                <Link href={`/dashboard/${user.role === 'consultant' ? 'consultant' : 'client'}`} className="text-[12px] text-[#172033] hover:text-[#365cf5] font-semibold">
+                  Dashboard
+                </Link>
+                <form action="/api/auth/logout" method="POST">
+                  <Button variant="outline" size="sm" type="submit">Log out</Button>
+                </form>
+              </>
+            ) : (
+              <>
+                <Link href="/login" className="text-[12px] text-[#365cf5] hover:text-[#2445c7]">
+                  Log in
+                </Link>
+                <Link href="/register">
+                  <Button variant="primary" size="sm">Sign up</Button>
+                </Link>
+              </>
+            )}
           </div>
 
           {/* Mobile Menu Toggle */}
@@ -99,16 +123,35 @@ export const Header: React.FC = () => {
             ))}
           </nav>
           <div className="pt-4 border-t border-slate-100 flex flex-col gap-2">
-            <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
-              <Button variant="outline" className="w-full justify-center">
-                Log in
-              </Button>
-            </Link>
-            <Link href="/register" onClick={() => setMobileMenuOpen(false)}>
-              <Button variant="primary" className="w-full justify-center">
-                Join Platform
-              </Button>
-            </Link>
+            {loading ? (
+              <div className="h-10 animate-pulse bg-slate-100 rounded-md w-full"></div>
+            ) : user ? (
+              <>
+                <Link href={`/dashboard/${user.role === 'consultant' ? 'consultant' : 'client'}`} onClick={() => setMobileMenuOpen(false)}>
+                  <Button variant="primary" className="w-full justify-center">
+                    Dashboard
+                  </Button>
+                </Link>
+                <form action="/api/auth/logout" method="POST">
+                  <Button variant="outline" className="w-full justify-center" type="submit">
+                    Log out
+                  </Button>
+                </form>
+              </>
+            ) : (
+              <>
+                <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
+                  <Button variant="outline" className="w-full justify-center">
+                    Log in
+                  </Button>
+                </Link>
+                <Link href="/register" onClick={() => setMobileMenuOpen(false)}>
+                  <Button variant="primary" className="w-full justify-center">
+                    Join Platform
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       )}

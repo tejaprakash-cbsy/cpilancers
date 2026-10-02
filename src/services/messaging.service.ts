@@ -8,7 +8,7 @@ import { createClient as createBrowserClient } from '@/lib/supabase/client';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { NotificationService } from '@/services/notification.service';
 import { messageReceived } from '@/lib/notifications/events';
-import type { 
+import type {
   ConversationType,
   ConversationMemberRole,
   NotificationType,
@@ -194,16 +194,16 @@ export class MessagingService {
   static async getUserConversations(): Promise<ConversationListItem[]> {
     try {
       const supabase = await createClient();
-      
+
       // Get user
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      
+
       if (!user) {
         throw new UnauthorizedError('User not authenticated');
       }
-      
+
       // Get conversations where the user is a participant
       const { data: conversations, error } = await supabase
         .from('conversation_members')
@@ -233,12 +233,12 @@ export class MessagingService {
         // which PostgREST rejected with PGRST100 ("failed to parse order") and
         // which made this endpoint 500 for every caller.
         .order('last_message_at', { foreignTable: 'conversations', ascending: false });
-      
+
       if (error) {
         console.error('[DB Error - Get User Conversations]:', error);
         throw new AppError('Failed to load conversations', 500);
       }
-      
+
       // Flattened from the membership row: the embedded `conversations` value is
       // a to-one embed, so it is normalised here rather than assumed to be an
       // object. Rows whose embed came back empty are dropped instead of being
@@ -273,16 +273,16 @@ export class MessagingService {
   static async getConversationById(conversationId: string): Promise<ConversationSummary | null> {
     try {
       const supabase = await createClient();
-      
+
       // Get user
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      
+
       if (!user) {
         throw new UnauthorizedError('User not authenticated');
       }
-      
+
       // Verify user is a participant in this conversation
       const { data: membership, error: memberError } = await supabase
         .from('conversation_members')
@@ -292,11 +292,11 @@ export class MessagingService {
           user_id: user.id,
         })
         .single();
-      
+
       if (memberError || !membership) {
         throw new UnauthorizedError('You are not a participant in this conversation');
       }
-      
+
       // Get conversation
       const { data: conversation, error } = await supabase
         .from('conversations')
@@ -309,12 +309,12 @@ export class MessagingService {
         `)
         .eq('id', conversationId)
         .single();
-      
+
       if (error) {
         console.error('[DB Error - Get Conversation]:', error);
         throw new AppError('Failed to load conversation', 500);
       }
-      
+
       return conversation;
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -329,16 +329,16 @@ export class MessagingService {
   static async getMessages(conversationId: string, page: number = 1, limit: number = 50): Promise<MessageRow[]> {
     try {
       const supabase = await createClient();
-      
+
       // Get user
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      
+
       if (!user) {
         throw new UnauthorizedError('User not authenticated');
       }
-      
+
       // Verify user is a participant in this conversation
       const { data: membership, error: memberError } = await supabase
         .from('conversation_members')
@@ -348,29 +348,42 @@ export class MessagingService {
           user_id: user.id,
         })
         .single();
-      
+
       if (memberError || !membership) {
         throw new UnauthorizedError('You are not a participant in this conversation');
       }
-      
+
       // Get messages with pagination (newest first, then reverse for display oldest first)
       const offset = (page - 1) * limit;
-      
+
+      // The `sender` embed MUST stay a LEFT JOIN (plain `users(...)`).
+      //
+      // `public.users` is protected by `users_select_self`
+      // (SELECT USING (id = auth.uid())), so a reader can only ever see their
+      // own users row. With the previous `users!inner(...)` this embed became an
+      // INNER JOIN against that self-only table, which silently DROPPED every
+      // message sent by somebody else. `messages_select_member` correctly allows
+      // a conversation member to read the whole conversation, but the inner join
+      // overrode that: each participant saw only their own messages and the chat
+      // looked permanently empty. Found during browser QA when a consultant
+      // received nothing over Realtime -- the cause was this read, not delivery.
+      //
+      // Do not "optimise" this back to `!inner`.
       const { data: messages, error } = await supabase
         .from('messages')
         .select(`
           *,
-          sender:users!inner(id, email, profiles(first_name, last_name, display_name, avatar_url))
+          sender:users(id, email, profiles(first_name, last_name, display_name, avatar_url))
         `)
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
-      
+
       if (error) {
         console.error('[DB Error - Get Messages]:', error);
         throw new AppError('Failed to load messages', 500);
       }
-      
+
       // Reverse to show oldest first (for chat display)
       return messages.reverse();
     } catch (error) {
@@ -390,16 +403,16 @@ export class MessagingService {
   ): Promise<MessageRow> {
     try {
       const supabase = await createClient();
-      
+
       // Get user
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      
+
       if (!user) {
         throw new UnauthorizedError('User not authenticated');
       }
-      
+
       // Verify user is a participant in this conversation
       const { data: membership, error: memberError } = await supabase
         .from('conversation_members')
@@ -409,15 +422,15 @@ export class MessagingService {
           user_id: user.id,
         })
         .single();
-      
+
       if (memberError || !membership) {
         throw new UnauthorizedError('You are not a participant in this conversation');
       }
-      
+
       // Rate limiting check
       const now = Date.now();
       const existingEntry = rateLimitStore.get(user.id);
-      
+
       if (existingEntry) {
         // Reset count if the time window has passed
         if (now > existingEntry.resetTime) {
@@ -429,7 +442,7 @@ export class MessagingService {
               `Rate limit exceeded. Please wait ${Math.ceil((existingEntry.resetTime - now) / 1000)} seconds before sending another message.`
             );
           }
-          
+
           // Increment the count
           rateLimitStore.set(user.id, { count: existingEntry.count + 1, resetTime: existingEntry.resetTime });
         }
@@ -437,33 +450,33 @@ export class MessagingService {
         // First message from this user
         rateLimitStore.set(user.id, { count: 1, resetTime: now + RATE_LIMIT_TIME_WINDOW_MS });
       }
-      
+
       // Validate message content
       if (!content || content.trim().length === 0) {
         throw new ValidationError('Message content cannot be empty');
       }
-      
+
       if (content.length > MAX_MESSAGE_LENGTH) {
         throw new ValidationError(`Message exceeds maximum length of ${MAX_MESSAGE_LENGTH} characters`);
       }
-      
+
       // Validate attachments
       if (attachments && attachments.length > 0) {
         if (attachments.length > MAX_ATTACHMENTS_PER_MESSAGE) {
           throw new ValidationError(`Maximum ${MAX_ATTACHMENTS_PER_MESSAGE} attachments per message`);
         }
-        
+
         for (const file of attachments) {
           if (!ALLOWED_ATTACHMENT_TYPES.includes(file.type)) {
             throw new ValidationError(`File type ${file.type} is not allowed`);
           }
-          
+
           if (file.size > MAX_ATTACHMENT_SIZE) {
             throw new ValidationError(`File size exceeds maximum of ${MAX_ATTACHMENT_SIZE / (1024 * 1024)}MB`);
           }
         }
       }
-      
+
       // Upload attachments first (if any)
       const attachmentResults: UploadedAttachment[] = [];
       if (attachments && attachments.length > 0) {
@@ -472,7 +485,7 @@ export class MessagingService {
           attachmentResults.push(uploadedAttachment);
         }
       }
-      
+
       // Insert message
       const { data: newMessage, error: messageError } = await supabase
         .from('messages')
@@ -483,7 +496,7 @@ export class MessagingService {
         })
         .select()
         .single();
-      
+
       if (messageError) {
         await supabase.storage.from('message-attachments').remove(
           attachmentResults.map((attachment) => attachment.storagePath)
@@ -491,16 +504,16 @@ export class MessagingService {
         console.error('[DB Error - Send Message]:', messageError);
         throw new AppError('Failed to send message', 500);
       }
-      
+
       // Update conversation's last_message_at
       await supabase
         .from('conversations')
         .update({ last_message_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         .eq('id', conversationId);
-      
+
       // Get other participants to notify
       const otherMembers = await this.getConversationMembers(conversationId, user.id);
-      
+
       // Create notifications for other participants. Keyed on the message id, so
       // every message in a thread notifies exactly once and a redelivered send
       // does not notify twice.
@@ -513,7 +526,7 @@ export class MessagingService {
           conversationId,
         });
       }
-      
+
       // If there are attachments, link them to the message
       if (attachmentResults.length > 0) {
         // Update message with attachment info or create attachment records
@@ -528,13 +541,13 @@ export class MessagingService {
               mime_type: attachment.mimeType,
               storage_path: attachment.storagePath,
             });
-          
+
           if (attachmentError) {
             console.error('[DB Error - Link Attachment]:', attachmentError);
           }
         }
       }
-      
+
       // Return the full message with attachments
       return {
         ...newMessage,
@@ -553,32 +566,32 @@ export class MessagingService {
   static async markMessageAsRead(messageId: string): Promise<void> {
     try {
       const supabase = await createClient();
-      
+
       // Get user
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      
+
       if (!user) {
         throw new UnauthorizedError('User not authenticated');
       }
-      
+
       // Update the conversation_members record with last_read_message_id
       const { data: message, error: messageError } = await supabase
         .from('messages')
         .select('conversation_id')
         .eq('id', messageId)
         .single();
-      
+
       if (messageError) {
         console.error('[DB Error - Get Message for Read Status]:', messageError);
         return;
       }
-      
+
       // Update the member's last_read_message_id
       const { error } = await supabase
         .from('conversation_members')
-        .update({ 
+        .update({
           last_read_message_id: messageId,
           last_read_at: new Date().toISOString()
         })
@@ -586,7 +599,7 @@ export class MessagingService {
           conversation_id: message.conversation_id,
           user_id: user.id,
         });
-      
+
       if (error) {
         console.error('[DB Error - Mark Message Read]:', error);
       }
@@ -601,25 +614,25 @@ export class MessagingService {
   static async getUnreadMessageCount(): Promise<number> {
     try {
       const supabase = await createClient();
-      
+
       // Get user
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      
+
       if (!user) {
         throw new UnauthorizedError('User not authenticated');
       }
-      
+
       // Get unread message count using the helper function
       const { data: { count }, error } = await supabase
         .rpc('get_unread_message_count', { user_uuid: user.id });
-      
+
       if (error) {
         console.error('[DB Error - Get Unread Count]:', error);
         return 0;
       }
-      
+
       return count || 0;
     } catch (error) {
       console.error('[MessagingService.getUnreadMessageCount]:', error);
@@ -643,21 +656,21 @@ export class MessagingService {
     try {
       const supabase = await createClient();
       const adminSupabase = createAdminClient();
-      
+
       // Get user
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      
+
       if (!user) {
         throw new UnauthorizedError('User not authenticated');
       }
-      
+
       // Ensure current user is in the participants list
       if (!participantIds.includes(user.id)) {
         participantIds.push(user.id);
       }
-      
+
       // Create conversation
       const { data: conversation, error } = await adminSupabase
         .from('conversations')
@@ -671,12 +684,12 @@ export class MessagingService {
         })
         .select()
         .single();
-      
+
       if (error) {
         console.error('[DB Error - Create Conversation]:', error);
         throw new AppError('Failed to create conversation', 500);
       }
-      
+
       // Add participants to conversation
       for (const participantId of participantIds) {
         const { error: memberError } = await adminSupabase
@@ -686,13 +699,13 @@ export class MessagingService {
             user_id: participantId,
             member_role: 'participant',
           });
-        
+
         if (memberError) {
           await adminSupabase.from('conversations').delete().eq('id', conversation.id);
           throw new AppError('Failed to create conversation members', 500);
         }
       }
-      
+
       return conversation;
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -747,18 +760,18 @@ export class MessagingService {
           users:user_id (id, email, profiles(first_name, last_name, display_name, avatar_url))
         `)
         .eq('conversation_id', conversationId);
-      
+
       if (excludeUserId) {
         query = query.neq('user_id', excludeUserId);
       }
-      
+
       const { data: members, error } = await query;
-      
+
       if (error) {
         console.error('[DB Error - Get Conversation Members]:', error);
         throw new AppError('Failed to load conversation members.', 500, 'MEMBERS_FETCH_ERROR', error);
       }
-      
+
       // Normalise the `users` embed so consumers see a single object rather
       // than having to branch on PostgREST's response shape.
       return ((members ?? []) as ConversationMemberRowWithUser[]).map((member) => ({
@@ -781,32 +794,32 @@ export class MessagingService {
   static async uploadAttachment(file: File, userId: string): Promise<UploadedAttachment> {
     try {
       const supabase = await createClient();
-      
+
       // Get user
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      
+
       if (!user) {
         throw new UnauthorizedError('User not authenticated');
       }
-      
+
       // Validate file
       if (!file) throw new ValidationError('No file provided');
-      
+
       if (!ALLOWED_ATTACHMENT_TYPES.includes(file.type)) {
         throw new ValidationError('File type is not allowed');
       }
-      
+
       if (file.size > MAX_ATTACHMENT_SIZE) {
         throw new ValidationError('File size exceeds maximum allowed size');
       }
-      
+
       // Create file path
       const fileExt = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
       const fileName = `${crypto.randomUUID()}.${fileExt}`;
       const filePath = `${userId}/${fileName}`;
-      
+
       // Upload to Supabase Storage
       // The stored path is the only thing we need back; `uploadData` (which
       // also carries signed-URL helpers and metadata we do not use) was bound
@@ -818,12 +831,12 @@ export class MessagingService {
           cacheControl: '3600',
           upsert: false,
         });
-      
+
       if (uploadError) {
         console.error('[Storage Error - Upload Attachment]:', uploadError);
         throw new AppError('Failed to upload attachment', 500);
       }
-      
+
       return {
         fileName: file.name,
         fileSize: file.size,
@@ -843,62 +856,62 @@ export class MessagingService {
   static async editMessage(messageId: string, newContent: string): Promise<MessageRow> {
     try {
       const supabase = await createClient();
-      
+
       // Get user
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      
+
       if (!user) {
         throw new UnauthorizedError('User not authenticated');
       }
-      
+
       // Validate content
       if (!newContent || newContent.trim().length === 0) {
         throw new ValidationError('Message content cannot be empty');
       }
-      
+
       if (newContent.length > MAX_MESSAGE_LENGTH) {
         throw new ValidationError('Message exceeds maximum length');
       }
-      
+
       // Verify user is the sender
       const { data: message, error: fetchError } = await supabase
         .from('messages')
         .select('*')
         .eq('id', messageId)
         .single();
-      
+
       if (fetchError) {
         console.error('[DB Error - Get Message for Edit]:', fetchError);
         throw new AppError('Message not found', 404);
       }
-      
+
       if (message.sender_id !== user.id) {
         throw new UnauthorizedError('You can only edit your own messages');
       }
-      
+
       // Check if message was deleted
       if (message.deleted_at) {
         throw new AppError('Cannot edit a deleted message', 400);
       }
-      
+
       // Update message
       const { data: result, error } = await supabase
         .from('messages')
-        .update({ 
+        .update({
           content: newContent.trim(),
           edited_at: new Date().toISOString(),
         })
         .eq('id', messageId)
         .select()
         .single();
-      
+
       if (error) {
         console.error('[DB Error - Edit Message]:', error);
         throw new AppError('Failed to edit message', 500);
       }
-      
+
       return result;
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -913,38 +926,38 @@ export class MessagingService {
   static async deleteMessage(messageId: string): Promise<void> {
     try {
       const supabase = await createClient();
-      
+
       // Get user
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      
+
       if (!user) {
         throw new UnauthorizedError('User not authenticated');
       }
-      
+
       // Verify user is the sender
       const { data: message, error: fetchError } = await supabase
         .from('messages')
         .select('*')
         .eq('id', messageId)
         .single();
-      
+
       if (fetchError) {
         console.error('[DB Error - Get Message for Delete]:', fetchError);
         throw new AppError('Message not found', 404);
       }
-      
+
       if (message.sender_id !== user.id) {
         throw new UnauthorizedError('You can only delete your own messages');
       }
-      
+
       // Soft delete
       const { error } = await supabase
         .from('messages')
         .update({ deleted_at: new Date().toISOString() })
         .eq('id', messageId);
-      
+
       if (error) {
         console.error('[DB Error - Delete Message]:', error);
         throw new AppError('Failed to delete message', 500);
@@ -966,33 +979,33 @@ export class MessagingService {
   ): Promise<Record<string, unknown>> {
     try {
       const supabase = await createClient();
-      
+
       // Get user
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      
+
       if (!user) {
         throw new UnauthorizedError('User not authenticated');
       }
-      
+
       // Validate report
       if (!reason) {
         throw new ValidationError('Report reason is required');
       }
-      
+
       // Get message details to find the conversation
       const { data: message, error: fetchError } = await supabase
         .from('messages')
         .select('conversation_id, sender_id, content')
         .eq('id', messageId)
         .single();
-      
+
       if (fetchError) {
         console.error('[DB Error - Get Message for Report]:', fetchError);
         throw new AppError('Message not found', 404);
       }
-      
+
       // Verify user is a participant in the conversation
       const { error: memberError } = await supabase
         .from('conversation_members')
@@ -1002,11 +1015,11 @@ export class MessagingService {
           user_id: user.id,
         })
         .single();
-      
+
       if (memberError) {
         throw new UnauthorizedError('You must be a participant in this conversation to report messages');
       }
-      
+
       // Create a report record
       const { data: report, error } = await supabase
         .from('reports')
@@ -1019,12 +1032,12 @@ export class MessagingService {
         })
         .select()
         .single();
-      
+
       if (error) {
         console.error('[DB Error - Report Message]:', error);
         throw new AppError('Failed to report message', 500);
       }
-      
+
       return report;
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -1079,25 +1092,25 @@ export class MessagingService {
   static async getUnreadNotifications(): Promise<NotificationRow[]> {
     try {
       const supabase = await createClient();
-      
+
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       if (!user) {
         throw new UnauthorizedError('User not authenticated');
       }
-      
+
       const { data: notifications, error } = await supabase
         .from('notifications')
         .select('*')
         .eq('user_id', user.id)
         .eq('is_read', false)
         .order('created_at', { ascending: false });
-      
+
       if (error) {
         console.error('[DB Error - Get Unread Notifications]:', error);
         return [];
       }
-      
+
       return notifications || [];
     } catch (error) {
       console.error('[MessagingService.getUnreadNotifications]:', error);
@@ -1113,7 +1126,7 @@ export class MessagingService {
     onMessage: (payload: RealtimeMessagePayload) => void
   ) {
     const supabase = createBrowserClient();
-    
+
     const channel = supabase
       .channel(`messages:conversation_id=eq.${conversationId}`)
       .on(
@@ -1129,7 +1142,7 @@ export class MessagingService {
         }
       )
       .subscribe();
-    
+
     return channel;
   }
 
@@ -1138,7 +1151,7 @@ export class MessagingService {
    */
   static unsubscribeFromConversation(conversationId: string) {
     const supabase = createBrowserClient();
-    
+
     supabase
       .channel(`messages:conversation_id=eq.${conversationId}`)
       .unsubscribe();

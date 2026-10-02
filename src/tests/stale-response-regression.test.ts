@@ -299,6 +299,64 @@ describe('J: PostgREST query construction (regression)', () => {
   });
 });
 
+describe('chat-view message ownership (regression)', () => {
+  /**
+   * `chat-view.tsx` used to decide "is this my message?" with
+   *
+   *   message.sender_id === conversation.conversation_members[0]?.users.id
+   *
+   * which compares the sender against a ROSTER POSITION rather than the signed-in
+   * user. Two distinct wrong behaviours follow:
+   *
+   *   - every message from the first-listed member rendered as "mine", including
+   *     when that member was the other participant;
+   *   - the caller's own messages rendered as "not mine" whenever the caller was
+   *     not first in the roster.
+   *
+   * Because that flag gates the edit/delete controls, the buttons were offered on
+   * another participant's messages. This was display-only -- `MessagingService`
+   * and RLS both re-check ownership -- but the UI offered an action the server
+   * would refuse.
+   *
+   * These assertions read the component source with comments stripped
+   * (`codeOnly`), because the rationale for the fix is itself written beside the
+   * code and a naive read would match the documentation instead of the logic.
+   */
+  it('never infers ownership from the conversation member roster order', async () => {
+    const { codeOnly } = await import('./read-source');
+    const src = await codeOnly('src/components/messaging/chat-view.tsx');
+
+    expect(src).not.toMatch(/conversation_members\[0\]/);
+    expect(src).not.toMatch(/sender_id\s*===\s*conversation\b/);
+  });
+
+  it('compares the sender against the authenticated caller id', async () => {
+    const { codeOnly } = await import('./read-source');
+    const src = await codeOnly('src/components/messaging/chat-view.tsx');
+
+    // Ownership is derived from the resolved session user.
+    expect(src).toMatch(/currentUserId/);
+    expect(src).toMatch(/setCurrentUserId\(\s*user\.id\s*\)/);
+    expect(src).toMatch(/sender_id\s*===\s*currentUserId/);
+  });
+
+  it('excludes the signed-in user, not roster[0], from the header participants', async () => {
+    const { codeOnly } = await import('./read-source');
+    const src = await codeOnly('src/components/messaging/chat-view.tsx');
+
+    expect(src).toMatch(/m\.user_id\s*!==\s*currentUserId/);
+  });
+
+  it('shows no per-message actions while the caller identity is unresolved', async () => {
+    const { codeOnly } = await import('./read-source');
+    const src = await codeOnly('src/components/messaging/chat-view.tsx');
+
+    // Guards the render before /api/auth/me resolves: ownership must not fall
+    // back to a roster guess in that window.
+    expect(src).toMatch(/!!currentUserId\s*&&\s*message\.sender_id\s*===\s*currentUserId/);
+  });
+});
+
 describe('conversation-list payload shape', () => {
   /**
    * `getUserConversations` returns FLAT `ConversationListItem[]`. It does not

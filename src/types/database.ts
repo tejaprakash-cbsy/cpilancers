@@ -625,3 +625,76 @@ export interface PaymentStatusHistory {
   metadata: Record<string, unknown>;
   created_at: string;
 }
+
+export type ForumDiscussionStatus = 'open' | 'locked' | 'deleted';
+export type ForumPostStatus = 'active' | 'deleted';
+
+export interface ForumCategory {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface ForumDiscussion {
+  id: string;
+  category_id: string;
+  author_id: string;
+  title: string;
+  body: string;
+  status: ForumDiscussionStatus;
+  is_pinned: boolean;
+  view_count: number;
+  reply_count: number;
+  upvote_count: number;
+  accepted_post_id: string | null;
+  last_activity_at: string;
+  created_at: string;
+  updated_at: string;
+  /**
+   * Optional author join returned by `ForumService.getDiscussions`.
+   *
+   * Declared so the UI can read `discussion.author.display_name` without an
+   * `as any` cast. The previous shape omitted this field, which pushed the
+   * cast into the component and defeated type checking on the one field the
+   * list actually renders.
+   */
+  author?: {
+    id: string;
+    display_name: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+  } | null;
+}
+
+export interface ForumPost {
+  id: string;
+  discussion_id: string;
+  author_id: string;
+  body: string;
+  status: ForumPostStatus;
+  upvote_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ForumVote {
+  id: string;
+  user_id: string;
+  discussion_id: string | null;
+  post_id: string | null;
+  created_at: string;
+}
+
+export interface ForumReport {
+  id: string;
+  reporter_id: string;
+  discussion_id: string | null;
+  post_id: string | null;
+  reason: string;
+  details: string | null;
+  resolved: boolean;
+  created_at: string;
+}

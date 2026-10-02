@@ -40,16 +40,32 @@ export const ChatView: React.FC = () => {
   const { conversationId } = useParams<{ conversationId: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
-  
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [conversation, setConversation] = useState<ChatConversation | null>(null);
+  // The authenticated caller's own user id.
+  //
+  // This is the identity message ownership is compared against. It used to be
+  // inferred as `conversation.conversation_members[0]`, which is a positional
+  // guess at roster order rather than a fact about who is signed in: every
+  // message from the first-listed member looked like "mine", and none of the
+  // signed-in user's own messages did. That inverted the alignment and moved
+  // the edit/delete controls onto another participant's messages, and it also
+  // mislabelled the conversation header.
+  //
+  // The controls are display only. The server re-checks ownership on every
+  // mutation (`MessagingService.editMessage`/`deleteMessage` compare
+  // `message.sender_id` to the session user) and RLS backs that up
+  // (`sender_id = auth.uid()`), so this was never an authorization bypass --
+  // but the UI must not offer an action the server will reject.
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [messageInput, setMessageInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [scrollToBottom, setScrollToBottom] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
+
   // For editing messages
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editMessageContent, setEditMessageContent] = useState<string>('');
@@ -74,6 +90,8 @@ export const ChatView: React.FC = () => {
           router.push('/login');
           return;
         }
+
+        setCurrentUserId(user.id);
 
         if (!conversationId) {
           setError('Conversation ID is required');
@@ -181,7 +199,7 @@ export const ChatView: React.FC = () => {
   // Handle sending a message
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!messageInput.trim()) {
       return;
     }
@@ -192,7 +210,7 @@ export const ChatView: React.FC = () => {
         conversationId,
         messageInput,
       );
-      
+
       // Add the new message to the list
       setMessages(prev => [...prev, newMessage as ChatMessage]);
       setMessageInput('');
@@ -214,16 +232,16 @@ export const ChatView: React.FC = () => {
     if (!editMessageContent.trim()) {
       return;
     }
-    
+
     setIsLoading(true);
     try {
       const updatedMessage = await MessagingService.editMessage(messageId, editMessageContent);
-      
+
       // Update the message in the list
-      setMessages(prev => 
+      setMessages(prev =>
         prev.map(msg => msg.id === messageId ? (updatedMessage as ChatMessage) : msg)
       );
-      
+
       setEditingMessageId(null);
       setEditMessageContent('');
     } catch (err: unknown) {
@@ -243,11 +261,11 @@ export const ChatView: React.FC = () => {
     if (!window.confirm('Are you sure you want to delete this message?')) {
       return;
     }
-    
+
     setIsLoading(true);
     try {
       await MessagingService.deleteMessage(messageId);
-      
+
       // Remove the message from the list
       setMessages(prev => prev.filter(msg => msg.id !== messageId));
     } catch (err: unknown) {
@@ -310,7 +328,9 @@ export const ChatView: React.FC = () => {
 
   // Get other participants
   const otherMembers = conversation.conversation_members
-    .filter((m) => m.user_id !== conversation.conversation_members[0]?.users.id)
+    // Everyone except the signed-in user. This previously excluded roster[0],
+    // which is not necessarily the caller.
+    .filter((m) => m.user_id !== currentUserId)
     .map((m) => m.users);
 
   return (
@@ -354,10 +374,12 @@ export const ChatView: React.FC = () => {
         ) : (
           <div className="space-y-4">
             {messages.map((message) => {
-              const isOwnMessage = message.sender_id === conversation.conversation_members[0]?.users.id;
+              // Ownership is the caller's own id, never a roster position. While the session
+              // is still unresolved no per-message actions are shown at all.
+              const isOwnMessage = !!currentUserId && message.sender_id === currentUserId;
               const isEdited = !!message.edited_at;
               const isDeleted = !!message.deleted_at;
-              
+
               return (
                 <div key={message.id} className={cn(
                   'flex',
@@ -382,7 +404,7 @@ export const ChatView: React.FC = () => {
                       <div className="text-xs text-slate-400 mt-1">
                         {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
-                      
+
                       {/* Message actions (for own messages) */}
                       {isOwnMessage && !isDeleted && (
                         <div className="flex space-x-2 mt-2">
@@ -411,7 +433,7 @@ export const ChatView: React.FC = () => {
                       )}
                     </div>
                   )}
-                  
+
                   {isDeleted && (
                     <div className="text-xs text-slate-400 italic">
                       This message was deleted
@@ -435,7 +457,7 @@ export const ChatView: React.FC = () => {
               placeholder="Edit your message..."
               className="flex-1"
             />
-            <Button 
+            <Button
               onClick={() => handleSaveEdit(editingMessageId)}
               isLoading={isLoading}
               disabled={isLoading || !editMessageContent.trim()}
@@ -463,7 +485,7 @@ export const ChatView: React.FC = () => {
               placeholder="Type a message..."
               className="flex-1"
             />
-            <Button 
+            <Button
               onClick={handleSendMessage}
               isLoading={isLoading}
               disabled={isLoading || !messageInput.trim()}

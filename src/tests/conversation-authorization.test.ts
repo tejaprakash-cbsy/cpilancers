@@ -511,6 +511,30 @@ describe('conversation membership: authenticated participant', () => {
     expect(callsFor('messages').find((call) => call.op === 'range')?.args).toEqual([0, 49]);
   });
 
+  /**
+   * Regression: `public.users` is protected by `users_select_self`
+   * (SELECT USING (id = auth.uid())), so a reader only ever sees their own row.
+   * Embedding the sender with `users!inner(...)` turned the query into an INNER
+   * JOIN against that self-only table and silently dropped every message sent by
+   * another participant, so each member saw only their own messages.
+   *
+   * The membership check above already authorises the read, and
+   * `messages_select_member` allows a member to read the whole conversation, so
+   * the sender embed must stay a LEFT JOIN.
+   */
+  it('embeds the sender as a LEFT JOIN so other members messages are not dropped', async () => {
+    signInAsParticipant();
+    setTableResult('messages', { data: [], error: null });
+
+    await MessagingService.getMessages(CONVERSATION_A);
+
+    const selectCall = callsFor('messages').find((call) => call.op === 'select');
+    expect(selectCall).toBeDefined();
+    const select = String(selectCall?.args[0]);
+    expect(select).toMatch(/sender:users\(/);
+    expect(select).not.toMatch(/sender:users!inner\(/);
+  });
+
   it('lets a participant send a message', async () => {
     signInAsParticipant(SENDING_USER);
     setTableResult('conversation_members', { data: membershipRow(SENDING_USER), error: null });
@@ -539,6 +563,64 @@ describe('conversation membership: authenticated participant', () => {
       })
     );
     expect(neqValues('conversation_members', 'user_id')).toEqual([SENDING_USER]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Message ownership: only the author may edit or delete
+// ---------------------------------------------------------------------------
+
+describe('message ownership: edit and delete are refused for another user message', () => {
+  // Both users are members of conversation A. Only CALLER_USER sent `m1`, so
+  // PEER_USER is a legitimate participant attempting to modify someone else's
+  // message. This is the server-side guarantee behind the chat UI's edit/delete
+  // controls: the UI only ever renders them for the caller's own messages, and
+  // these assertions prove the server refuses regardless of what the UI sends.
+  beforeEach(() => {
+    signInAsParticipant(PEER_USER);
+    setTableResult('messages', { data: messageRow('m1', CALLER_USER, 'belongs to the caller'), error: null });
+  });
+
+  it('refuses to edit a message sent by another participant', async () => {
+    await expect(MessagingService.editMessage('m1', 'tampered')).rejects.toThrow(
+      'You can only edit your own messages'
+    );
+    expect(callsFor('messages').some((call) => call.op === 'update')).toBe(false);
+  });
+
+  it('refuses to delete a message sent by another participant', async () => {
+    await expect(MessagingService.deleteMessage('m1')).rejects.toThrow(
+      'You can only delete your own messages'
+    );
+    expect(callsFor('messages').some((call) => call.op === 'update')).toBe(false);
+  });
+
+  it('refuses an edit by an outsider who is not a member at all', async () => {
+    signInAsOutsider();
+
+    await expect(MessagingService.editMessage('m1', 'tampered')).rejects.toThrow(
+      'You can only edit your own messages'
+    );
+    await expect(MessagingService.deleteMessage('m1')).rejects.toThrow(
+      'You can only delete your own messages'
+    );
+  });
+
+  it('still permits the author to edit and delete their own message', async () => {
+    signInAsParticipant(CALLER_USER);
+    // The author re-reads their own row (sender_id === CALLER_USER), then the
+    // write is scripted to return the updated row.
+    setTableResult('messages', { data: messageRow('m1', CALLER_USER, 'belongs to the caller'), error: null });
+    setTableResult(
+      'messages',
+      { data: { ...messageRow('m1', CALLER_USER, 'my correction'), content: 'my correction', edited_at: '2026-01-02T00:00:00.000Z' }, error: null },
+      'write'
+    );
+
+    const edited = await MessagingService.editMessage('m1', 'my correction');
+    expect(edited).toMatchObject({ id: 'm1', content: 'my correction' });
+
+    await expect(MessagingService.deleteMessage('m1')).resolves.toBeUndefined();
   });
 });
 
