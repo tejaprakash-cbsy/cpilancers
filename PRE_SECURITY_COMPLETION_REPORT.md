@@ -142,21 +142,29 @@ These statements are reported separately because they are not equivalent:
 | Statement | Result |
 | --- | --- |
 | File `00017_realtime_messages.sql` present in repo | **VERIFIED** |
-| `messages` in the `supabase_realtime` publication | **NOT VERIFIED** |
-| Realtime database configuration | **NOT VERIFIED** |
-| End-to-end browser delivery | **NOT VERIFIED (FAIL)** |
+| `00017` applied remotely | **PASS (reported)** — applied by the successful manual CLI push |
+| `messages` in the `supabase_realtime` publication | **PASS (reported)** — previously verified; not re-queried this session |
+| End-to-end browser delivery | **FAIL — NOT WORKING** |
 
-**Why publication membership could not be confirmed:** `pg_publication_tables` is
-a Postgres catalog, not readable over PostgREST. The project exposes no
-SQL-executing RPC (an `exec_sql` probe returns HTTP 404) and no management access
-token is available, so the catalog query cannot be run legitimately from here.
-`ALTER PUBLICATION` was **not** executed and nothing was assumed about it.
+*Superseded finding.* This section originally read "NOT VERIFIED" for the
+publication, based on the early `REALTIME_FIX_REPORT.md` snapshot of the first
+failed `db push`. Later, after `00016` was corrected twice, the Supabase CLI was
+run manually against `uzjvaijepqfiogwncdjn` and both migrations were reported
+pushed successfully, with `pg_publication_tables` reported showing `messages`.
 
-**Why `SUBSCRIBED` proves nothing:** both browsers reached `SUBSCRIBED` and the
-server replied `{"message":"Subscribed to PostgreSQL","status":"ok"}` — but a
-differential probe showed `jobs` and `forum_posts` **also** report `SUBSCRIBED`.
-A table absent from the publication still subscribes. Only event delivery
-distinguishes them, and no `postgres_changes` INSERT frame was ever observed.
+_Current status: **previously verified remotely after successful CLI push; not
+independently re-queried in this session.**_ No CLI, no DB password and no
+`schema_migrations` access via PostgREST (HTTP 404) in this environment. Full
+chronology: `PRE_SECURITY_BASELINE_REPORT.md` §1.
+
+**Why `SUBSCRIBED` alone is not proof of delivery:** both browsers reached
+`SUBSCRIBED` and the server replied
+`{"message":"Subscribed to PostgreSQL","status":"ok"}` — but a differential probe
+showed `jobs` and `forum_posts` **also** report `SUBSCRIBED`. Only a received
+event proves delivery, and no `postgres_changes` INSERT frame was ever observed.
+
+**Consequence:** because the publication is reported applied, the browser delivery
+failure is **unexplained** and is carried into the audit as an open item.
 
 ---
 
@@ -212,10 +220,10 @@ referencing a non-existent `budget` key on `jobs`. **No database migration for a
 
 | Item | Status |
 | --- | --- |
-| Realtime end-to-end delivery | **FAIL** — still not delivered |
-| Migration `00017` publication membership | **NOT VERIFIED** — needs SQL access |
+| Realtime end-to-end delivery | **FAIL** — subscribes but never delivers; cause open |
+| Migration `00017` applied remotely | **PASS (reported)** — successful CLI push; not re-queried this session |
 | Cross-role UI guard | **FAIL (new finding)** — a consultant can render `/jobs/create` and `/dashboard/client` |
-| `chat-view.tsx` own-message detection | **FAIL (new finding)** — compares `sender_id` to `conversation_members[0]` |
+| `chat-view.tsx` own-message detection | **FIXED** — now compares `sender_id` to the authenticated caller |
 | Forum end-to-end browser QA | **NOT TESTED** in depth (page loads verified, CRUD not exercised) |
 | Client job/proposal CRUD, proposal submission | **NOT TESTED** end-to-end |
 | Dedicated security audit | **NOT STARTED** — out of scope |

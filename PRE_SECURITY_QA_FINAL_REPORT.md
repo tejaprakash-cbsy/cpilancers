@@ -106,7 +106,7 @@ modified, skipped, xfailed or weakened.
 | Data-plane connectivity | PASS |
 | Migrations `00001`–`00015` | PASS (pre-existing) |
 | Migration `00016_forum.sql` applied remotely | **PASS** — 5/5 tables present, 9 categories seeded, REST probe HTTP 200 |
-| Migration `00017_realtime_messages.sql` applied remotely | **NOT VERIFIED** |
+| Migration `00017_realtime_messages.sql` applied remotely | **PASS (reported)** — see §6 |
 | QA fixture testing | PASS |
 | RLS / authorization boundary | PASS — non-member read HTTP 401 `UNAUTHORIZED` |
 | Teardown / residue | **PASS — residue 0** |
@@ -122,6 +122,22 @@ No credential or secret value appears in any file written this session.
 over PostgREST, not by inspecting the file. Both required corrections are present:
 `update_updated_at_column()` is used for the trigger functions, and privileged
 policies key off `role = 'admin'`. **No moderator role was added.**
+
+**`00017_realtime_messages.sql` — applied remotely: PASS (reported).**
+*Superseded finding.* When this section was first written it read "NOT VERIFIED",
+based on the early `REALTIME_FIX_REPORT.md` snapshot recording the first failed
+`db push`. That was later superseded: after `00016` was corrected
+(`trigger_set_timestamp()` → `update_updated_at_column()`; `moderator` → `admin`)
+the Supabase CLI was run manually against `uzjvaijepqfiogwncdjn` and both
+migrations were reported pushed successfully, with `pg_publication_tables`
+reported showing `messages` in `supabase_realtime`.
+
+_Current status of that verification: **previously verified remotely after
+successful CLI push; not independently re-queried in this session.**_ No CLI, no
+database password and no `schema_migrations` access via PostgREST (HTTP 404) in
+the current environment. Full chronology: `PRE_SECURITY_BASELINE_REPORT.md` §1.
+
+Note that the FAIL below is **not** caused by the migration being unapplied.
 
 ---
 
@@ -167,36 +183,34 @@ RECV  [null,...,"system",{"message":"Subscribed to PostgreSQL","status":"ok"}]
 …then **no `postgres_changes` INSERT frame is ever received**, even though sending
 returns HTTP 201 and the row is persisted.
 
-**`SUBSCRIBED` is not proof of publication membership.** A differential probe
-showed `jobs` and `forum_posts` — tables with no reason to be in the publication —
-*also* report `SUBSCRIBED`. Supabase accepts the subscription regardless and only
-delivers when the table is genuinely in `supabase_realtime`.
+`SUBSCRIBED` is not proof that events are flowing. A differential probe showed
+`jobs` and `forum_posts` also report `SUBSCRIBED`, so the channel status alone
+cannot distinguish a subscribed-and-delivering channel from a
+subscribed-but-silent one. Only received events do.
 
-Leading explanation, stated as a **hypothesis and not a verified fact**: migration
-`00017` was written but never applied remotely, so `messages` is absent from the
-publication. Confirming requires
-`SELECT * FROM pg_publication_tables WHERE pubname = 'supabase_realtime'` in the
-Supabase SQL editor, which this environment cannot do.
+*Superseded explanation:* this section originally hypothesised that `00017` had
+never been applied. That is no longer the working assumption — see §6, where the
+migration is recorded as reported applied and `messages` reported present in
+`supabase_realtime`. **The delivery failure therefore remains unexplained** and is
+an open item for the audit/architecture investigation.
 
 ### Distinction, stated explicitly
 
 ```text
-Realtime database configuration = NOT VERIFIED
-End-to-end browser delivery      = NOT VERIFIED  (FAIL — 4 delivery assertions failed)
+Migration / configuration : PASS (reported applied; previously verified)
+End-to-end browser delivery: FAIL — NOT WORKING
 ```
 
-**Required remediation (needs DB access this session does not have):** run
-`00017_realtime_messages.sql` in the Supabase SQL editor, confirm
-`pg_publication_tables` lists `messages`, then re-run
-`node scripts/rt-browser-e2e.mjs`. **No schema change was made this session.**
+**Next step:** diagnose why the channel subscribes but never delivers, with
+`messages` already reported in the publication. Re-run
+`node scripts/rt-browser-e2e.mjs` after any change. **No schema or configuration
+change was made this session.**
 
 Two harness artefacts were identified as **not** product defects: a burst message
 dropped while the send button was still disabled (fixed by waiting for the
 composer to clear), and cold `next dev` compiles exceeding selector timeouts
 (fixed by raising timeouts).
-**`00017_realtime_messages.sql` — applied remotely: NOT VERIFIED.**
-`pg_publication_tables` is a Postgres catalog not exposed via PostgREST; the
-project has no SQL-executing RPC (`exec_sql` → HTTP 404), no management access
+
 ---
 
 ## 8. Browser / route QA
@@ -260,16 +274,18 @@ demonstrably refused a client). Recorded as findings for the security audit.
 ## 10. Remaining issues
 
 1. **Realtime delivery is broken (FAIL).** Four delivery assertions fail
-   consistently. Blocked on confirming/applying migration `00017`, which needs DB
-   access unavailable here.
+   consistently. The migration is reported applied and `messages` reported
+   present in the publication, so the cause is **open**, not a migration
+   application problem.
 2. **Consultant can render client routes (FAIL).** `/jobs/create` and
    `/dashboard/client` have no UI role guard.
-3. **`chat-view.tsx` own-message detection is wrong (FAIL).** It compares
-   `message.sender_id` to `conversation.conversation_members[0]?.users.id`
-   instead of the current user's id. Consequences: alignment is wrong and
-   edit/delete controls can appear on another member's messages. **Not fixed** —
-   it is a behavioural change with security-relevant implications and belongs in
-   the audit, not a blind QA fix.
+3. **`chat-view.tsx` own-message detection — FIXED after this report was written.**
+   It compared `message.sender_id` to
+   `conversation.conversation_members[0]?.users.id` instead of the current user's
+   id, so alignment was wrong and edit/delete controls could appear on another
+   member's messages. Now fixed and covered by regression tests; classified
+   **UI-only** (server and RLS always re-checked ownership). See
+   `PRE_SECURITY_BASELINE_REPORT.md` §2.
 4. **Forum CRUD untested (NOT TESTED).**
 
 ## 11. NOT TESTED items (explicit)
