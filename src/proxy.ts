@@ -1,9 +1,35 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
+import { evaluateOrigin } from '@/lib/security/origin';
 
 export async function proxy(request: NextRequest) {
-  const response = await updateSession(request);
   const { pathname } = request.nextUrl;
+
+  // F-04 — Origin validation, ahead of everything else.
+  //
+  // This runs BEFORE `updateSession` and therefore before any route handler,
+  // service call or database write, so a rejected cross-origin mutation can
+  // never partially execute. It is centralised here rather than repeated across
+  // the 69 API route files, and it does not change any existing authentication
+  // or authorization decision: it only refuses the request earlier.
+  const decision = evaluateOrigin(request.method, pathname, request.headers.get('origin'));
+  if (!decision.allow) {
+    // Deliberately generic: it does not disclose what the expected origin is, so
+    // the response cannot be used to probe the deployment's configuration.
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          message: 'Cross-origin request blocked.',
+          code: 'FORBIDDEN',
+          statusCode: 403,
+        },
+      },
+      { status: 403 }
+    );
+  }
+
+  const response = await updateSession(request);
 
   // `dashboard` was missing from this list, so both dashboards were reachable
   // while signed out and simply failed client-side instead of being turned away.
