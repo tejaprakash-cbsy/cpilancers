@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { Job, JobStatus } from '@/types/database';
 import { AppError } from '@/lib/errors';
+import { jobEditSchema } from '@/lib/validations/job.schemas';
+import { z } from 'zod';
 
 /**
  * Statuses a job may hold while it is legitimately visible in the public
@@ -453,6 +455,25 @@ export class JobService {
       const adminSupabase = createAdminClient();
       const ownership = await resolveJobOwnership(id);
       if (!ownership || ownership.userId !== userId) throw new AppError('You do not own this job', 403);
+      // F-14: validate the editable values BEFORE the database write.
+      //
+      // Without this, invalid input reached Postgres and the resulting CHECK /
+      // NOT NULL / enum violation was caught by the generic `error` branch below
+      // and reported as `AppError('Failed to update job', 500)`. A client that
+      // sent a negative budget was told the server had a fault. Some bad input
+      // was worse than a 500: `title: ""` violated no constraint at all and was
+      // silently persisted.
+      //
+      // `jobEditSchema` is the schema that already governs this form; it is
+      // reused as-is rather than duplicated or weakened. The ORIGINAL `data` is
+      // still what continues below, because the schema strips keys it does not
+      // model -- `status` is sent by publishJob/closeJob, and
+      // `deliverables_markdown` is a real column the schema omits. Those stay
+      // governed by the allowlist and the status-transition rules below.
+      //
+      // This sits AFTER the ownership check so an unauthorized caller still gets
+      // 403 regardless of what the body contains, exactly as before.
+      jobEditSchema.parse(data);
       const allowedFields = ['title', 'description_markdown', 'deliverables_markdown', 'integration_type', 'source_systems', 'target_systems', 'protocols', 'expected_throughput_tier', 'complexity', 'estimated_duration_weeks', 'budget_type', 'budget_fixed_cents', 'budget_min_cents', 'budget_max_cents', 'expires_at'];
       const updates: Record<string, unknown> = Object.fromEntries(Object.entries(data).filter(([key]) => allowedFields.includes(key)));
       if (data.status !== undefined) {
@@ -476,6 +497,12 @@ export class JobService {
       return job as Job;
     } catch (error) {
       if (error instanceof AppError) throw error;
+      // F-14: a schema failure is a client input error, not a server fault. The
+      // generic branch below would otherwise re-wrap the ZodError as
+      // `AppError('Failed to update job', 500)` and undo the whole point of
+      // validating up front. Letting it propagate lets `formatErrorResponse`
+      // render it as the conventional 400 VALIDATION_ERROR.
+      if (error instanceof z.ZodError) throw error;
       console.error('[JobService.updateJob]:', error);
       throw new AppError('Failed to update job', 500);
     }
