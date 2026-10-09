@@ -152,7 +152,7 @@ export default function ProposalCard({
 
       {/* Client Actions */}
       {currentUserRole === 'client' &&
-        ['submitted', 'shortlisted'].includes(status) && (
+        ['submitted', 'shortlisted', 'accepted'].includes(status) && (
           <div className="mt-4 pt-4 border-t border-gray-100 flex space-x-3">
             {status === 'submitted' && onShortlist && (
               <button
@@ -162,7 +162,7 @@ export default function ProposalCard({
                 Shortlist
               </button>
             )}
-            {onReject && (
+            {status !== 'accepted' && onReject && (
               <button
                 onClick={() => onReject(id)}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg text-sm"
@@ -178,18 +178,36 @@ export default function ProposalCard({
                 Accept
               </button>
             )}
+            {status === 'accepted' && (
+              <Link
+                href="/messages"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm"
+              >
+                Message Consultant
+              </Link>
+            )}
           </div>
         )}
 
       {/* Consultant Actions */}
-      {currentUserRole === 'consultant' && ['submitted', 'shortlisted'].includes(status) && onWithdraw && (
-        <div className="mt-4 pt-4 border-t border-gray-100">
-          <button
-            onClick={() => onWithdraw(id)}
-            className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium rounded-lg text-sm"
-          >
-            Withdraw Proposal
-          </button>
+      {currentUserRole === 'consultant' && ['submitted', 'shortlisted', 'accepted'].includes(status) && (
+        <div className="mt-4 pt-4 border-t border-gray-100 flex space-x-3">
+          {status !== 'accepted' && onWithdraw && (
+            <button
+              onClick={() => onWithdraw(id)}
+              className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium rounded-lg text-sm"
+            >
+              Withdraw Proposal
+            </button>
+          )}
+          {status === 'accepted' && (
+            <Link
+              href="/messages"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm"
+            >
+              Message Client
+            </Link>
+          )}
         </div>
       )}
     </div>

@@ -1,0 +1,15 @@
+{
+  "origin": "http://localhost:3000",
+  "password": "RtQA!2026pass",
+  "conversationId": "7419d7c3-c105-422f-ae2c-99775b0fc887",
+  "emails": {
+    "client": "rt-e2e-client@test.lancers.dev",
+    "consultant": "rt-e2e-consultant@test.lancers.dev",
+    "outsider": "rt-e2e-outsider@test.lancers.dev"
+  },
+  "userIds": {
+    "client": "31e9d98c-25ed-43ac-9783-ebbaa508843d",
+    "consultant": "25eb97f7-f98d-49be-8042-1a81df12a4bd",
+    "outsider": "77925028-c9bf-425c-aa1d-d96a7f835538"
+  }
+}

@@ -344,7 +344,13 @@ export const ChatView: React.FC = () => {
                 Conversation
                 {otherMembers.length > 0 && (
                   <span className="ml-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-xs font-medium text-slate-600">
-                    {otherMembers.map((m) => `${m.first_name} ${m.last_name}`).join(', ') || 'Unknown User'}
+                    {otherMembers.map((m) => {
+                      if (!m) return 'Unknown User';
+                      const u = Array.isArray(m) ? m[0] : m;
+                      if (!u) return 'Unknown User';
+                      const p = Array.isArray(u.profiles) ? u.profiles[0] : u.profiles;
+                      return p ? `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unknown User' : 'Unknown User';
+                    }).join(', ') || 'Unknown User'}
                   </span>
                 )}
               </h1>

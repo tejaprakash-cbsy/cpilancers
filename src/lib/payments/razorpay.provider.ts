@@ -499,7 +499,15 @@ function mapConnectedAccount(raw: Accounts.RazorpayAccount): ProviderConnectedAc
 
 let provider: PaymentProvider | null = null;
 
+import { MockPaymentProvider } from './mock.provider';
+
 export function getPaymentProvider(): PaymentProvider {
-  if (!provider) provider = new RazorpayRouteProvider();
+  if (!provider) {
+    if (process.env.USE_MOCK_PAYMENT === 'true' || !process.env.RAZORPAY_KEY_ID) {
+      provider = new MockPaymentProvider();
+    } else {
+      provider = new RazorpayRouteProvider();
+    }
+  }
   return provider;
 }

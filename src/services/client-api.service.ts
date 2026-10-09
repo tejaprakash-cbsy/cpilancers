@@ -1,4 +1,4 @@
-import type { Job, Proposal, User, ClientProfile, ConsultantProfile, Profile, Company, Skill, ConsultantSkill, ConsultantCertification } from '@/types/database';
+import type { Job, Proposal, User, ClientProfile, ConsultantProfile, Profile, Company, Skill, ConsultantSkill, ConsultantCertification, Contract, ContractStatus, Milestone, MilestoneStatus } from '@/types/database';
 import { createClient as createBrowserSupabaseClient } from '@/lib/supabase/client';
 
 /** Channel lifecycle states reported by supabase-js realtime. */
@@ -229,4 +229,27 @@ export class ClientProfileService {
   static removeConsultantSkill(id: string, skillId: string) { return request<void>(`/api/profile/consultants/${id}/skills/${skillId}`, { method: 'DELETE' }); }
   static getConsultantCertifications(id: string) { return request<ConsultantCertification[]>(`/api/profile/consultants/${id}/certifications`); }
   static addConsultantCertification(id: string, data: Record<string, unknown>) { return request<ConsultantCertification>(`/api/profile/consultants/${id}/certifications`, { method: 'POST', body: JSON.stringify(data) }); }
+}
+
+export class ClientContractService {
+  static listContracts() { return request<Contract[]>('/api/contracts'); }
+  static getContract(id: string) { return request<Contract>(`/api/contracts/${id}`); }
+  static updateContractStatus(id: string, status: ContractStatus) { return request<Contract>(`/api/contracts/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }); }
+  static getMilestones(id: string) { return request<Milestone[]>(`/api/contracts/${id}/milestones`); }
+  static createMilestone(id: string, data: Record<string, unknown>) { return request<Milestone>(`/api/contracts/${id}/milestones`, { method: 'POST', body: JSON.stringify(data) }); }
+  static updateMilestone(id: string, milestoneId: string, data: Record<string, unknown>) { return request<Milestone>(`/api/contracts/${id}/milestones/${milestoneId}`, { method: 'PATCH', body: JSON.stringify(data) }); }
+}
+
+export class ClientPaymentService {
+  static listPayments(filters?: { contract_id?: string; status?: string }) { 
+    const query = new URLSearchParams();
+    if (filters?.contract_id) query.append('contract_id', filters.contract_id);
+    if (filters?.status) query.append('status', filters.status);
+    return request<any[]>(`/api/payments?${query.toString()}`); 
+  }
+  static createPayment(milestone_id: string) { return request<any>('/api/payments', { method: 'POST', body: JSON.stringify({ milestone_id }) }); }
+  static getPayment(id: string) { return request<any>(`/api/payments/${id}`); }
+  static confirmPayment(id: string) { return request<any>(`/api/payments/${id}/confirm`, { method: 'POST' }); }
+  static releasePayment(id: string) { return request<any>(`/api/payments/${id}/release`, { method: 'POST' }); }
+  static refundPayment(id: string, data: { reason?: string; amount_cents?: number }) { return request<any>(`/api/payments/${id}/refund`, { method: 'POST', body: JSON.stringify(data) }); }
 }

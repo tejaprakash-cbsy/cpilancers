@@ -1,0 +1,272 @@
+[
+  {
+    "area": "public/desktop",
+    "name": "/",
+    "status": "PASS",
+    "detail": "HTTP 200, 3441 chars"
+  },
+  {
+    "area": "public/desktop",
+    "name": "/jobs",
+    "status": "PASS",
+    "detail": "HTTP 200, 1133 chars"
+  },
+  {
+    "area": "public/desktop",
+    "name": "/consultants",
+    "status": "PASS",
+    "detail": "HTTP 200, 1441 chars"
+  },
+  {
+    "area": "public/mobile",
+    "name": "/",
+    "status": "PASS",
+    "detail": "HTTP 200, 3354 chars"
+  },
+  {
+    "area": "public/mobile",
+    "name": "/jobs",
+    "status": "PASS",
+    "detail": "HTTP 200, 972 chars"
+  },
+  {
+    "area": "public/mobile",
+    "name": "/consultants",
+    "status": "PASS",
+    "detail": "HTTP 200, 1144 chars"
+  },
+  {
+    "area": "public/tablet",
+    "name": "/",
+    "status": "PASS",
+    "detail": "HTTP 200, 3441 chars"
+  },
+  {
+    "area": "public/tablet",
+    "name": "/jobs",
+    "status": "PASS",
+    "detail": "HTTP 200, 1028 chars"
+  },
+  {
+    "area": "public/tablet",
+    "name": "/consultants",
+    "status": "PASS",
+    "detail": "HTTP 200, 1200 chars"
+  },
+  {
+    "area": "invalid-id",
+    "name": "/jobs/00000000-0000-0000-0000-000000000000",
+    "status": "PASS",
+    "detail": "HTTP 200, 732 chars"
+  },
+  {
+    "area": "invalid-id",
+    "name": "/consultants/00000000-0000-0000-0000-000000000000",
+    "status": "PASS",
+    "detail": "HTTP 200, 677 chars"
+  },
+  {
+    "area": "invalid-id",
+    "name": "/jobs/not-a-uuid",
+    "status": "PASS",
+    "detail": "HTTP 200, 732 chars"
+  },
+  {
+    "area": "invalid-id",
+    "name": "/forum/00000000-0000-0000-0000-000000000000",
+    "status": "PASS",
+    "detail": "HTTP 200, 735 chars"
+  },
+  {
+    "area": "anon/protected",
+    "name": "/dashboard/client",
+    "status": "PASS",
+    "detail": "guarded, redirected to /login"
+  },
+  {
+    "area": "anon/protected",
+    "name": "/jobs/create",
+    "status": "PASS",
+    "detail": "guarded, redirected to /login"
+  },
+  {
+    "area": "anon/protected",
+    "name": "/profile",
+    "status": "PASS",
+    "detail": "guarded, redirected to /login"
+  },
+  {
+    "area": "anon/protected",
+    "name": "/messages",
+    "status": "PASS",
+    "detail": "guarded, redirected to /login"
+  },
+  {
+    "area": "anon/protected",
+    "name": "/proposals",
+    "status": "PASS",
+    "detail": "guarded, redirected to /login"
+  },
+  {
+    "area": "anon/protected",
+    "name": "/forum/new",
+    "status": "PASS",
+    "detail": "guarded, redirected to /login"
+  },
+  {
+    "area": "forum/anon",
+    "name": "/forum",
+    "status": "PASS",
+    "detail": "HTTP 200, 932 chars"
+  },
+  {
+    "area": "forum/anon",
+    "name": "/forum/new",
+    "status": "PASS",
+    "detail": "guarded, redirected to /login"
+  },
+  {
+    "area": "auth",
+    "name": "client login redirect",
+    "status": "PASS",
+    "detail": "routed to /dashboard/client"
+  },
+  {
+    "area": "client",
+    "name": "/dashboard/client",
+    "status": "PASS",
+    "detail": "HTTP 200, 1135 chars"
+  },
+  {
+    "area": "client",
+    "name": "/profile",
+    "status": "PASS",
+    "detail": "HTTP 200, 1077 chars"
+  },
+  {
+    "area": "client",
+    "name": "/profile/edit",
+    "status": "PASS",
+    "detail": "HTTP 200, 977 chars"
+  },
+  {
+    "area": "client",
+    "name": "/jobs/create",
+    "status": "PASS",
+    "detail": "HTTP 200, 944 chars"
+  },
+  {
+    "area": "client",
+    "name": "/messages",
+    "status": "PASS",
+    "detail": "HTTP 200, 717 chars"
+  },
+  {
+    "area": "client",
+    "name": "/messages/7419d7c3-c105-422f-ae2c-99775b0fc887",
+    "status": "PASS",
+    "detail": "HTTP 200, 1120 chars"
+  },
+  {
+    "area": "auth",
+    "name": "consultant login redirect",
+    "status": "PASS",
+    "detail": "routed to /dashboard/consultant"
+  },
+  {
+    "area": "consultant",
+    "name": "/dashboard/consultant",
+    "status": "PASS",
+    "detail": "HTTP 200, 1200 chars"
+  },
+  {
+    "area": "consultant",
+    "name": "/profile",
+    "status": "PASS",
+    "detail": "HTTP 200, 1081 chars"
+  },
+  {
+    "area": "consultant",
+    "name": "/profile/edit",
+    "status": "PASS",
+    "detail": "HTTP 200, 977 chars"
+  },
+  {
+    "area": "consultant",
+    "name": "/proposals",
+    "status": "PASS",
+    "detail": "HTTP 200, 744 chars"
+  },
+  {
+    "area": "consultant",
+    "name": "/messages",
+    "status": "PASS",
+    "detail": "HTTP 200, 718 chars"
+  },
+  {
+    "area": "cross-role/consultant",
+    "name": "/jobs/create",
+    "status": "PASS",
+    "detail": "HTTP 200, 1200 chars | CPI Lancers C Consultant Freelancer account Overview Contracts Proposals Saved jobs Messages Earnings Profile Help center Settings Search C Good morning, Consul"
+  },
+  {
+    "area": "cross-role/consultant",
+    "name": "/dashboard/client",
+    "status": "PASS",
+    "detail": "HTTP 200, 1200 chars | CPI Lancers C Consultant Freelancer account Overview Contracts Proposals Saved jobs Messages Earnings Profile Help center Settings Search C Good morning, Consul"
+  },
+  {
+    "area": "cross-role/client",
+    "name": "/dashboard/consultant",
+    "status": "PASS",
+    "detail": "HTTP 200, 1135 chars | CPI Lancers QC QA Client Client account Overview My jobs Contracts Proposals Talent Messages Spending Help center Settings Search QC QA Client workspace A clear"
+  },
+  {
+    "area": "cross-role/client",
+    "name": "/proposals",
+    "status": "PASS",
+    "detail": "HTTP 200, 1135 chars | CPI Lancers QC QA Client Client account Overview My jobs Contracts Proposals Talent Messages Spending Help center Settings Search QC QA Client workspace A clear"
+  },
+  {
+    "area": "dashboard-content",
+    "name": "/dashboard/client",
+    "status": "PASS",
+    "detail": "HTTP 200, 1135 chars | CPI Lancers QC QA Client Client account Overview My jobs Contracts Proposals Talent Messages Spending Help center Settings Search QC QA Client workspace A clear"
+  },
+  {
+    "area": "dashboard-content",
+    "name": "/dashboard/consultant",
+    "status": "PASS",
+    "detail": "HTTP 200, 1200 chars | CPI Lancers C Consultant Freelancer account Overview Contracts Proposals Saved jobs Messages Earnings Profile Help center Settings Search C Good morning, Consul"
+  },
+  {
+    "area": "responsive/client/mobile",
+    "name": "/messages",
+    "status": "PASS",
+    "detail": "HTTP 200, 658 chars"
+  },
+  {
+    "area": "responsive/client/tablet",
+    "name": "/messages",
+    "status": "PASS",
+    "detail": "HTTP 200, 717 chars"
+  },
+  {
+    "area": "responsive/consultant/mobile",
+    "name": "/messages",
+    "status": "PASS",
+    "detail": "HTTP 200, 659 chars"
+  },
+  {
+    "area": "responsive/consultant/tablet",
+    "name": "/messages",
+    "status": "PASS",
+    "detail": "HTTP 200, 718 chars"
+  },
+  {
+    "area": "auth",
+    "name": "logout",
+    "status": "PASS",
+    "detail": "/api/auth/me before=200 after=401"
+  }
+]

@@ -33,7 +33,7 @@ export const Footer: React.FC = () => {
                 </Link>
               </li>
               <li>
-                <Link href="/jobs/new" className="hover:text-slate-900 transition-colors">
+                <Link href="/jobs/create" className="hover:text-slate-900 transition-colors">
                   Post an Integration Requirement
                 </Link>
               </li>

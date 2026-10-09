@@ -1,0 +1,82 @@
+[
+  {
+    "name": "Client A authenticated (/api/auth/me)",
+    "status": "PASS",
+    "detail": "HTTP 200"
+  },
+  {
+    "name": "Consultant B authenticated (/api/auth/me)",
+    "status": "PASS",
+    "detail": "HTTP 200"
+  },
+  {
+    "name": "Client A channel SUBSCRIBED",
+    "status": "PASS",
+    "detail": "join ok for messages:conversation_id=eq.7419d7c3-c105-422f-ae2c-99775b0fc887"
+  },
+  {
+    "name": "Consultant B channel SUBSCRIBED",
+    "status": "PASS",
+    "detail": "join ok for messages:conversation_id=eq.7419d7c3-c105-422f-ae2c-99775b0fc887"
+  },
+  {
+    "name": "Client A -> Consultant B delivery (no refresh)",
+    "status": "FAIL",
+    "detail": "B never rendered \"RT-A1-muso6q7a\""
+  },
+  {
+    "name": "Consultant B -> Client A delivery (no refresh)",
+    "status": "FAIL",
+    "detail": "A never rendered \"RT-B1-muso6q7a\""
+  },
+  {
+    "name": "Burst of 3 delivered to B",
+    "status": "FAIL",
+    "detail": "RT-M1-muso6q7a=0 RT-M2-muso6q7a=0 RT-M3-muso6q7a=0"
+  },
+  {
+    "name": "No duplicate delivery to B",
+    "status": "FAIL",
+    "detail": "RT-M1-muso6q7a=0 RT-M2-muso6q7a=0 RT-M3-muso6q7a=0"
+  },
+  {
+    "name": "Persists after refresh",
+    "status": "PASS",
+    "detail": "counts 1,1,1,1,1"
+  },
+  {
+    "name": "Non-member API read denied",
+    "status": "PASS",
+    "detail": "HTTP 401 {\"success\":false,\"error\":{\"message\":\"You are not a participant in this conversation\",\"code\":\"UNAUTHORIZED\"},\"statusCode\""
+  },
+  {
+    "name": "Non-member page shows no conversation content",
+    "status": "PASS",
+    "detail": "no QA message content; page: CPI Lancers Browse Jobs Browse Freelancers Community Dashboard Log out You are not a participant in this conversation Please try again or contact support if the issue persists. Try Again CPI Lancers T"
+  },
+  {
+    "name": "Author sees controls on exactly their own messages",
+    "status": "FAIL",
+    "detail": "client sees edit=14 delete=14 (expected 4/4 for the 4 it authored)"
+  },
+  {
+    "name": "Non-author sees no controls on the other side messages",
+    "status": "FAIL",
+    "detail": "consultant sees delete=3 (expected 1, its own only)"
+  },
+  {
+    "name": "Server refuses cross-user edit (UI bypassed)",
+    "status": "PASS",
+    "detail": "POST edit on another user message -> HTTP 401"
+  },
+  {
+    "name": "HTTP send + reload persistence",
+    "status": "PASS",
+    "detail": "present after reload"
+  },
+  {
+    "name": "Message edit (own message)",
+    "status": "PASS",
+    "detail": "HTTP 200"
+  }
+]

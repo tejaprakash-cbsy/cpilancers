@@ -8,7 +8,7 @@ import { DashboardMetric, DashboardPanel, DashboardLink, EmptyDashboardPanel, Me
 import { ClientJobService, ClientMessagingService, ClientProfileService } from '@/services/client-api.service';
 import { Button } from '@/components/ui/button';
 
-const navItems: DashboardNavItem[] = [{ label: 'Overview', href: '/dashboard/client', icon: BarChart3 }, { label: 'My jobs', href: '/jobs', icon: BriefcaseBusiness }, { label: 'Contracts', href: '/contracts', icon: Handshake }, { label: 'Proposals', href: '/proposals', icon: FileText }, { label: 'Talent', href: '/consultants', icon: UsersRound }, { label: 'Messages', href: '/messages', icon: MessagesSquare }, { label: 'Spending', href: '/dashboard/client#spending', icon: WalletCards }];
+const navItems: DashboardNavItem[] = [{ label: 'Overview', href: '/dashboard/client', icon: BarChart3 }, { label: 'My jobs', href: '/jobs', icon: BriefcaseBusiness }, { label: 'Contracts', href: '/contracts', icon: Handshake }, { label: 'Proposals', href: '/jobs', icon: FileText }, { label: 'Talent', href: '/consultants', icon: UsersRound }, { label: 'Messages', href: '/messages', icon: MessagesSquare }, { label: 'Spending', href: '/dashboard/client#spending', icon: WalletCards }];
 const footerItems: DashboardNavItem[] = [{ label: 'Help center', href: '/help', icon: CircleHelp }, { label: 'Settings', href: '/settings', icon: Settings }];
 
 type DashboardState = { profile: Awaited<ReturnType<typeof ClientProfileService.getProfile>> | null; jobs: Awaited<ReturnType<typeof ClientJobService.getJobs>>['jobs']; conversations: unknown[]; loading: boolean; error: string | null };
