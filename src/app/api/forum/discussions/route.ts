@@ -1,26 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ForumService } from '@/services/forum.service';
 import { AuthService } from '@/services/auth.service';
-import { formatErrorResponse, ForbiddenError, ValidationError } from '@/lib/errors';
+import { formatErrorResponse, UnauthorizedError, ValidationError } from '@/lib/errors';
+import { createDiscussionSchema } from '@/lib/validations/forum.schemas';
+import { checkDiscussionRateLimit } from '@/lib/security/forum-rate-limiter';
 
 export async function POST(request: NextRequest) {
   try {
     const user = await AuthService.getCurrentUser();
-    if (!user) throw new ForbiddenError('Authentication required.');
-
-    const body = await request.json();
-    if (!body.title?.trim() || !body.body?.trim() || !body.categoryId) {
-      throw new ValidationError('Missing required fields.');
+    if (!user) {
+      throw new UnauthorizedError('Authentication required to create a discussion.');
     }
 
-    if (body.title.length > 150) {
-      throw new ValidationError('Title too long.');
+    // Abuse / spam rate limit check
+    checkDiscussionRateLimit(user.id);
+
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch {
+      throw new ValidationError('Malformed JSON payload.');
     }
+
+    const validation = createDiscussionSchema.safeParse(rawBody);
+    if (!validation.success) {
+      const issue = validation.error.issues[0];
+      throw new ValidationError(issue?.message || 'Invalid discussion input.', validation.error.issues);
+    }
+
+    const { categoryId, title, body } = validation.data;
 
     const discussion = await ForumService.createDiscussion({
-      categoryId: body.categoryId,
-      title: body.title,
-      body: body.body,
+      categoryId,
+      title,
+      body,
       authorId: user.id,
     });
 

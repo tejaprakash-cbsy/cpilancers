@@ -25,8 +25,8 @@ export default function ContractsPage() {
         ]);
         setProfile(profileData);
         setContracts(contractsData);
-      } catch (err: any) {
-        setError(err.message || 'Failed to load contracts');
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to load contracts');
       } finally {
         setLoading(false);
       }
@@ -77,7 +77,7 @@ export default function ContractsPage() {
             <div className="p-12 text-center">
               <Handshake className="w-12 h-12 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900">No contracts yet</h3>
-              <p className="text-gray-500 mt-1">You don't have any active or past contracts.</p>
+              <p className="text-gray-500 mt-1">You don&apos;t have any active or past contracts.</p>
               {isClient && (
                 <Button className="mt-4" onClick={() => router.push('/jobs/create')}>
                   Post a Job
@@ -104,7 +104,7 @@ export default function ContractsPage() {
                         {contract.title}
                       </td>
                       <td className="px-6 py-4 capitalize text-gray-600">
-                        {contract.contract_type.replace('_', ' ')}
+                        {contract.contract_type?.replace('_', ' ') || 'Contract'}
                       </td>
                       <td className="px-6 py-4 text-gray-600">
                         {formatCurrency(contract.total_amount_cents)}

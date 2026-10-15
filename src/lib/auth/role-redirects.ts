@@ -49,6 +49,7 @@ export function isSafeNextPath(raw: string | null | undefined): boolean {
   if (!raw) return false;
   if (raw.startsWith('//')) return false;
   if (!raw.startsWith('/')) return false;
+  if (raw.includes('\\')) return false;
   if (/[\u0000-\u001f\u007f]/.test(raw)) return false;
   return true;
 }

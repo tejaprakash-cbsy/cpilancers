@@ -10,6 +10,7 @@ import {
   X,
   BriefcaseBusiness,
   UserRound,
+  MessageSquare,
 } from 'lucide-react';
 import { ClientAuthService } from '@/services/client-api.service';
 import type { User } from '@/types/database';
@@ -28,9 +29,9 @@ export const Header: React.FC = () => {
   }, []);
 
   const navLinks = [
-    { name: 'Browse Jobs', href: '/jobs', icon: BriefcaseBusiness },
+    { name: 'Community Forum', href: '/forum', icon: MessageSquare },
     { name: 'Browse Freelancers', href: '/consultants', icon: UserRound },
-    { name: 'Community', href: '/forum', icon: UserRound },
+    { name: 'Browse Jobs', href: '/jobs', icon: BriefcaseBusiness },
   ];
 
   const isActive = (href: string) => pathname === href;

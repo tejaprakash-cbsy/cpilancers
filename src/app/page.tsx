@@ -6,7 +6,7 @@ import {
   ChevronRight,
   CircleCheck,
   Clock3,
-  Search,
+  MessageSquare,
   ShieldCheck,
   Zap,
 } from 'lucide-react';
@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Logo } from '@/components/brand/logo';
 import { JobService, PUBLICLY_LISTABLE_JOB_STATUSES } from '@/services/job.service';
+import { ForumService, type DiscussionWithAuthor } from '@/services/forum.service';
 import { formatRelativeTime } from '@/lib/utils';
 import type { Job } from '@/types/database';
 
@@ -36,14 +37,6 @@ const process = [
 ];
 
 export default async function HomePage() {
-  // The "Projects worth your best work" strip shows real published jobs read
-  // through the existing `JobService`, scoped to the publicly listable statuses
-  // so an anonymous visitor can never see a draft. It previously rendered three
-  // hardcoded rows with invented titles, ages ("3 weeks ago") and proposal
-  // counts ("12 proposals") that looked like live marketplace records.
-  //
-  // A database hiccup degrades to the empty state below rather than failing the
-  // whole landing page, and no fallback data is ever substituted.
   let recentJobs: Job[] = [];
   try {
     const result = await JobService.getJobs({
@@ -56,27 +49,35 @@ export default async function HomePage() {
     console.error('[HomePage - Recent Jobs]:', error);
   }
 
+  let recentDiscussions: DiscussionWithAuthor[] = [];
+  try {
+    const res = await ForumService.getDiscussions({ limit: 4 });
+    recentDiscussions = res.discussions;
+  } catch (error) {
+    console.error('[HomePage - Recent Discussions]:', error);
+  }
+
   return (
     <div className="bg-[#f5f6f8] text-[#172033]">
       <section className="bg-white">
         <div className="mx-auto grid max-w-[1280px] items-center gap-12 px-6 py-16 sm:px-10 lg:grid-cols-[1fr_1.05fr] lg:gap-20 lg:py-[76px]">
           <div className="max-w-[560px]">
-            <Badge variant="sap" className="mb-5">The modern talent marketplace</Badge>
+            <Badge variant="sap" className="mb-5">Free Community Forum Launch</Badge>
             <h1 className="max-w-[560px] text-[42px] font-normal leading-[1.08] tracking-[-1.5px] sm:text-[56px]">
-              Exceptional work.<br />
-              <span className="text-[#365cf5]">Without borders.</span>
+              SAP Integration Community.<br />
+              <span className="text-[#365cf5]">Discussions & Solutions.</span>
             </h1>
             <p className="mt-6 max-w-[500px] text-[16px] leading-7 text-[#667085]">
-              Lancers connects ambitious companies with proven independent professionals who bring clarity, craft, and momentum to every project.
+              CPI Lancers is now live as a free open forum for SAP Cloud Integration, Integration Suite, Groovy scripting, and enterprise middleware professionals.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Link href="/register"><Button size="lg" rightIcon={<ArrowRight className="h-4 w-4" />}>Find your next hire</Button></Link>
-              <Link href="/jobs"><Button size="lg" variant="outline" leftIcon={<Search className="h-4 w-4" />}>Explore projects</Button></Link>
+              <Link href="/forum"><Button size="lg" rightIcon={<ArrowRight className="h-4 w-4" />}>Explore Community Forum</Button></Link>
+              <Link href="/forum/new"><Button size="lg" variant="outline" leftIcon={<MessageSquare className="h-4 w-4" />}>Start a Discussion</Button></Link>
             </div>
             <div className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-[11px] text-[#667085]">
-              <span className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-[#148267]" /> Vetted professionals</span>
-              <span className="flex items-center gap-1.5"><CircleCheck className="h-3.5 w-3.5 text-[#148267]" /> Secure payments</span>
-              <span className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5 text-[#148267]" /> Flexible terms</span>
+              <span className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-[#148267]" /> 100% Free Public Forum</span>
+              <span className="flex items-center gap-1.5"><CircleCheck className="h-3.5 w-3.5 text-[#148267]" /> Expert Peer Answers</span>
+              <span className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5 text-[#148267]" /> CPI &amp; BTP Architecture</span>
             </div>
           </div>
           <div className="relative min-h-[390px] overflow-hidden rounded-[16px] bg-[#e7e9ee] sm:min-h-[500px]">
@@ -86,11 +87,71 @@ export default async function HomePage() {
               fill
               sizes="(max-width: 640px) 100vw, 50vw"
               className="absolute inset-0 h-full w-full object-cover"
-                          />
+            />
             <Card className="absolute bottom-5 left-5 right-5 flex items-center gap-3 border-white/80 bg-white/95 p-3 shadow-lg backdrop-blur sm:left-8 sm:right-8">
-              <div className="min-w-0 flex-1"><p className="text-xs font-semibold">Need SAP CPI expertise?</p><p className="truncate text-[11px] text-[#667085]">Post a brief and review proposals from independent consultants.</p></div>
-              <Link href="/jobs/create"><Button size="sm">Post a job</Button></Link>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold">Have an SAP CPI question?</p>
+                <p className="truncate text-[11px] text-[#667085]">Ask the community or browse existing architectural discussions.</p>
+              </div>
+              <Link href="/forum/new"><Button size="sm">Ask a Question</Button></Link>
             </Card>
+          </div>
+        </div>
+      </section>
+
+      {/* Featured Forum Discussions Section */}
+      <section className="border-t border-[#dde1e7] bg-white py-12">
+        <div className="mx-auto max-w-[1280px] px-6 sm:px-10">
+          <div className="mb-8 flex items-end justify-between gap-5">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[1.5px] text-[#365cf5]">Community Hub</p>
+              <h2 className="mt-1 text-[26px] font-normal">Latest Forum Discussions</h2>
+              <p className="mt-1 text-xs text-[#667085]">Join real conversations with SAP integration engineers and consultants.</p>
+            </div>
+            <Link href="/forum" className="hidden items-center gap-1 text-xs font-semibold text-[#365cf5] sm:flex">
+              View all discussions <ChevronRight className="h-4 w-4" />
+            </Link>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {recentDiscussions.length > 0 ? (
+              recentDiscussions.map((d) => (
+                <Link key={d.id} href={`/forum/${d.id}`} className="block">
+                  <Card className="p-5 h-full transition hover:-translate-y-0.5 hover:border-[#365cf5]/50 hover:shadow-sm">
+                    <div className="flex items-center gap-2 mb-2">
+                      {d.is_pinned && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
+                          Pinned
+                        </span>
+                      )}
+                      {d.category?.name && (
+                        <span className="text-[10px] font-semibold text-[#365cf5] bg-[#eef1ff] px-2 py-0.5 rounded">
+                          {d.category.name}
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="font-semibold text-sm text-[#172033] line-clamp-1">{d.title}</h3>
+                    <p className="mt-1 text-xs text-[#667085] line-clamp-2 leading-relaxed">{d.body}</p>
+                    <div className="mt-4 pt-2 border-t border-[#f0f2f5] flex items-center justify-between text-[11px] text-[#667085]">
+                      <span>{d.author?.display_name || 'Community Member'}</span>
+                      <div className="flex items-center gap-2">
+                        <span>{formatRelativeTime(d.created_at)}</span>
+                        <span>•</span>
+                        <span>{d.reply_count} {d.reply_count === 1 ? 'reply' : 'replies'}</span>
+                      </div>
+                    </div>
+                  </Card>
+                </Link>
+              ))
+            ) : (
+              <Card className="col-span-2 p-8 text-center">
+                <MessageSquare className="w-8 h-8 text-[#667085]/40 mx-auto mb-2" />
+                <p className="text-sm font-medium text-[#172033]">The forum is open for discussions!</p>
+                <p className="mt-1 text-xs text-[#667085]">Be the first to ask an SAP CPI or integration question.</p>
+                <div className="mt-4">
+                  <Link href="/forum/new"><Button size="sm">Create First Topic</Button></Link>
+                </div>
+              </Card>
+            )}
           </div>
         </div>
       </section>

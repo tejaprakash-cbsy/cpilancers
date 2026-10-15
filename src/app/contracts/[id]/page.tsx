@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { use } from 'react';
-import { ArrowLeft, CheckCircle, Clock, Info, AlertTriangle, FileText, Plus } from 'lucide-react';
+import { ArrowLeft, Clock, FileText, Plus } from 'lucide-react';
 import { DashboardShell } from '@/components/layout/dashboard-shell';
 import { ClientContractService, ClientProfileService, ClientPaymentService } from '@/services/client-api.service';
-import type { Contract, Milestone } from '@/types/database';
+import type { Contract, Milestone, ContractStatus, Payment } from '@/types/database';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -17,14 +17,13 @@ export default function ContractDetailPage({ params }: { params: Promise<{ id: s
   const [profile, setProfile] = useState<Awaited<ReturnType<typeof ClientProfileService.getProfile>> | null>(null);
   const [contract, setContract] = useState<Contract | null>(null);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
-  const [payments, setPayments] = useState<any[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   const loadData = async () => {
     try {
-      setLoading(true);
       const [profileData, contractData, milestonesData, paymentsData] = await Promise.all([
         ClientProfileService.getProfile(),
         ClientContractService.getContract(id),
@@ -35,15 +34,43 @@ export default function ContractDetailPage({ params }: { params: Promise<{ id: s
       setContract(contractData);
       setMilestones(milestonesData);
       setPayments(paymentsData || []);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load contract details');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load contract details');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
+    let ignore = false;
+    async function init() {
+      try {
+        const [profileData, contractData, milestonesData, paymentsData] = await Promise.all([
+          ClientProfileService.getProfile(),
+          ClientContractService.getContract(id),
+          ClientContractService.getMilestones(id),
+          ClientPaymentService.listPayments({ contract_id: id })
+        ]);
+        if (!ignore) {
+          setProfile(profileData);
+          setContract(contractData);
+          setMilestones(milestonesData);
+          setPayments(paymentsData || []);
+        }
+      } catch (err: unknown) {
+        if (!ignore) {
+          setError(err instanceof Error ? err.message : 'Failed to load contract details');
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    }
+    init();
+    return () => {
+      ignore = true;
+    };
   }, [id]);
 
   const isClient = profile?.user.role === 'client';
@@ -57,8 +84,8 @@ export default function ContractDetailPage({ params }: { params: Promise<{ id: s
       setActionLoading(true);
       await ClientContractService.updateMilestone(id, milestoneId, { status });
       await loadData();
-    } catch (err: any) {
-      setError(err.message || 'Failed to update milestone');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to update milestone');
     } finally {
       setActionLoading(false);
     }
@@ -67,12 +94,14 @@ export default function ContractDetailPage({ params }: { params: Promise<{ id: s
   const handleFundMilestone = async (milestoneId: string) => {
     try {
       setActionLoading(true);
-      const { data: createData } = await ClientPaymentService.createPayment(milestoneId);
+      const res = await ClientPaymentService.createPayment(milestoneId);
       // Simulate successful Razorpay checkout flow
-      await ClientPaymentService.confirmPayment(createData.payment_id);
+      if (res?.id) {
+        await ClientPaymentService.confirmPayment(res.id);
+      }
       await loadData();
-    } catch (err: any) {
-      setError(err.message || 'Failed to fund milestone');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to fund milestone');
     } finally {
       setActionLoading(false);
     }
@@ -83,8 +112,8 @@ export default function ContractDetailPage({ params }: { params: Promise<{ id: s
       setActionLoading(true);
       await ClientPaymentService.releasePayment(paymentId);
       await loadData();
-    } catch (err: any) {
-      setError(err.message || 'Failed to release payment');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to release payment');
     } finally {
       setActionLoading(false);
     }
@@ -93,10 +122,10 @@ export default function ContractDetailPage({ params }: { params: Promise<{ id: s
   const handleUpdateContractStatus = async (status: string) => {
     try {
       setActionLoading(true);
-      await ClientContractService.updateContractStatus(id, status as any);
+      await ClientContractService.updateContractStatus(id, status as ContractStatus);
       await loadData();
-    } catch (err: any) {
-      setError(err.message || 'Failed to update contract');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to update contract');
     } finally {
       setActionLoading(false);
     }
@@ -160,7 +189,7 @@ export default function ContractDetailPage({ params }: { params: Promise<{ id: s
               <div className="flex items-center mt-2 space-x-4 text-sm text-gray-500">
                 <span className="flex items-center">
                   <FileText className="w-4 h-4 mr-1.5" />
-                  {contract.contract_type.replace('_', ' ')}
+                  {contract.contract_type?.replace('_', ' ') || 'Contract'}
                 </span>
                 <span className="flex items-center">
                   <Clock className="w-4 h-4 mr-1.5" />
@@ -292,7 +321,7 @@ export default function ContractDetailPage({ params }: { params: Promise<{ id: s
                           </Button>
                         )}
                         {isClient && milestone.status === 'submitted' && (
-                          <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => {
+                          <Button size="sm" variant="primary" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => {
                             const p = payments.find(p => p.milestone_id === milestone.id);
                             if (p) {
                               handleReleasePayment(p.id);

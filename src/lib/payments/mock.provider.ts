@@ -168,7 +168,8 @@ export class MockPaymentProvider implements PaymentProvider {
     };
   }
 
-  async createConnectedAccount(input: CreateConnectedAccountInput): Promise<ProviderConnectedAccount> {
+  async createConnectedAccount(_input: CreateConnectedAccountInput): Promise<ProviderConnectedAccount> {
+    void _input;
     return {
       id: `acc_mock_${Date.now()}`,
       status: 'created',
@@ -188,7 +189,9 @@ export class MockPaymentProvider implements PaymentProvider {
     };
   }
 
-  verifyWebhookSignature(rawBody: string, signature: string): boolean {
+  verifyWebhookSignature(_rawBody: string, _signature: string): boolean {
+    void _rawBody;
+    void _signature;
     return true;
   }
 }

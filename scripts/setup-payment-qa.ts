@@ -6,9 +6,11 @@ async function setup() {
   // Get QA client and consultant
   const { data: client } = await supabase.from('users').select('id, email').eq('email', 'client.qa.test@example.com').single();
   const { data: consultant } = await supabase.from('users').select('id, email').eq('email', 'consultant.qa.test@example.com').single();
+  if (!client || !consultant) throw new Error('Missing client or consultant user');
   
   const { data: clientProfile } = await supabase.from('client_profiles').select('id').eq('user_id', client.id).single();
   const { data: consultantProfile } = await supabase.from('consultant_profiles').select('id').eq('user_id', consultant.id).single();
+  if (!clientProfile || !consultantProfile) throw new Error('Missing profile');
   
   // Make sure payout enabled
   await supabase.from('consultant_profiles').update({ 
@@ -29,7 +31,10 @@ async function setup() {
     currency: 'USD'
   }).select('*').single();
 
-  if (jobErr) console.error(jobErr);
+  if (jobErr || !job) {
+    console.error(jobErr);
+    throw new Error('Failed to create job');
+  }
 
   // Create Proposal
   const { data: proposal, error: propErr } = await supabase.from('proposals').insert({
@@ -41,7 +46,10 @@ async function setup() {
     cover_letter_markdown: 'Payment test proposal'
   }).select('*').single();
 
-  if (propErr) console.error(propErr);
+  if (propErr || !proposal) {
+    console.error(propErr);
+    throw new Error('Failed to create proposal');
+  }
 
   // Accept Proposal
   const { error: accErr } = await supabase.rpc('create_contract_for_proposal', {
@@ -59,7 +67,9 @@ async function setup() {
   await new Promise(r => setTimeout(r, 1000));
 
   const { data: contract } = await supabase.from('contracts').select('id').eq('proposal_id', proposal.id).single();
-  console.log(`Created contract: ${contract.id}`);
+  if (contract) {
+    console.log(`Created contract: ${contract.id}`);
+  }
 }
 
 setup().catch(console.error);

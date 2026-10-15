@@ -304,7 +304,7 @@ export class MessagingService {
           *,
           conversation_members:conversation_members!inner(
             user_id,
-            users:users(id, email, role, profiles(first_name, last_name, display_name, avatar_url))
+            users:users!inner(id, email, role, profiles(first_name, last_name, display_name, avatar_url))
           )
         `)
         .eq('id', conversationId)

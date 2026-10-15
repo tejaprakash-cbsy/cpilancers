@@ -1,4 +1,4 @@
-import type { Job, Proposal, User, ClientProfile, ConsultantProfile, Profile, Company, Skill, ConsultantSkill, ConsultantCertification, Contract, ContractStatus, Milestone, MilestoneStatus } from '@/types/database';
+import type { Job, Proposal, User, ClientProfile, ConsultantProfile, Profile, Company, Skill, ConsultantSkill, ConsultantCertification, Contract, ContractStatus, Milestone, Payment } from '@/types/database';
 import { createClient as createBrowserSupabaseClient } from '@/lib/supabase/client';
 
 /** Channel lifecycle states reported by supabase-js realtime. */
@@ -245,11 +245,11 @@ export class ClientPaymentService {
     const query = new URLSearchParams();
     if (filters?.contract_id) query.append('contract_id', filters.contract_id);
     if (filters?.status) query.append('status', filters.status);
-    return request<any[]>(`/api/payments?${query.toString()}`); 
+    return request<Payment[]>(`/api/payments?${query.toString()}`);
   }
-  static createPayment(milestone_id: string) { return request<any>('/api/payments', { method: 'POST', body: JSON.stringify({ milestone_id }) }); }
-  static getPayment(id: string) { return request<any>(`/api/payments/${id}`); }
-  static confirmPayment(id: string) { return request<any>(`/api/payments/${id}/confirm`, { method: 'POST' }); }
-  static releasePayment(id: string) { return request<any>(`/api/payments/${id}/release`, { method: 'POST' }); }
-  static refundPayment(id: string, data: { reason?: string; amount_cents?: number }) { return request<any>(`/api/payments/${id}/refund`, { method: 'POST', body: JSON.stringify(data) }); }
+  static createPayment(milestone_id: string) { return request<Payment>('/api/payments', { method: 'POST', body: JSON.stringify({ milestone_id }) }); }
+  static getPayment(id: string) { return request<Payment>(`/api/payments/${id}`); }
+  static confirmPayment(id: string) { return request<Payment>(`/api/payments/${id}/confirm`, { method: 'POST' }); }
+  static releasePayment(id: string) { return request<Payment>(`/api/payments/${id}/release`, { method: 'POST' }); }
+  static refundPayment(id: string, data: { reason?: string; amount_cents?: number }) { return request<Payment>(`/api/payments/${id}/refund`, { method: 'POST', body: JSON.stringify(data) }); }
 }

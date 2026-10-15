@@ -132,6 +132,12 @@ describe('same-origin protection for ?next= is preserved', () => {
     expect(isSafeNextPath('/profile\n//evil.example')).toBe(false);
   });
 
+  it('rejects backslash variants that could bypass prefix checks in WHATWG parsers', () => {
+    expect(isSafeNextPath('/\\evil.example')).toBe(false);
+    expect(isSafeNextPath('/\\/evil.example')).toBe(false);
+    expect(isSafeNextPath('/path\\something')).toBe(false);
+  });
+
   it('never resolves to an off-origin path for any role and next combination', () => {
     const roles: (UserRole | null)[] = ['client', 'consultant', 'admin', null];
     const candidates = [
