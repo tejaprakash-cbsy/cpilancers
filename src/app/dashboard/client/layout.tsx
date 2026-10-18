@@ -7,6 +7,8 @@ import { requireRole, CLIENT_ROLES } from '@/lib/auth/require-role';
  * `admin` is allowed because `ROLE_HOME_PATH` documents `/dashboard/client` as
  * the admin home page; blocking them here would loop.
  */
+export const dynamic = 'force-dynamic';
+
 export default async function ClientDashboardLayout({ children }: { children: React.ReactNode }) {
   await requireRole(CLIENT_ROLES);
   return <>{children}</>;

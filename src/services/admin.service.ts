@@ -228,7 +228,8 @@ export class AdminService extends BaseService {
       console.error('[admin/audit] failed to write audit entry', {
         action: entry.action,
         target: entry.targetId,
-        error,
+        errorCode: error?.code ?? 'UNKNOWN',
+        errorName: error?.name ?? 'UnknownError',
       });
       throw new AppError(
         'The administrative action could not be recorded and was not applied.',
@@ -265,7 +266,12 @@ export class AdminService extends BaseService {
       user_agent: context?.userAgent ?? null,
     });
     if (error) {
-      console.error('[admin/audit] failed to record surface access', { adminUserId, action, error });
+      console.error('[admin/audit] failed to record surface access', {
+        adminUserId,
+        action,
+        errorCode: error?.code ?? 'UNKNOWN',
+        errorName: error?.name ?? 'UnknownError',
+      });
     }
   }
 
@@ -554,13 +560,13 @@ export class AdminService extends BaseService {
       // A rejected transition surfaces as the function's own error, so the
       // reason is the database's, not a guess made in application code.
       if (rpcError.code === '23514' || rpcError.code === '23505') {
-        throw new ConflictError(rpcError.message);
+        throw new ConflictError();
       }
       if (rpcError.code === 'P0002' || rpcError.code === 'P0001') {
         throw new NotFoundError('User');
       }
       if (rpcError.code === '42501') {
-        throw new ForbiddenError(rpcError.message);
+        throw new ForbiddenError();
       }
       throw new AppError('Failed to update the account.', 500, 'USER_UPDATE_FAILED', rpcError);
     }
@@ -608,7 +614,7 @@ export class AdminService extends BaseService {
   static async getJobDetail(userId: string, jobId: string): Promise<Record<string, unknown>> {
     await this.requireAdmin(userId);
     const db = createAdminClient();
-    const { data, error } = await db.from('jobs').select('*').eq('id', jobId).maybeSingle();
+    const { data, error } = await db.from('jobs').select('id, client_id, company_id, title, slug, integration_type, source_systems, target_systems, protocols, expected_throughput_tier, complexity, description_markdown, deliverables_markdown, estimated_duration_weeks, budget_type, budget_fixed_cents, budget_min_cents, budget_max_cents, status, moderation_status, moderation_reason, moderated_by_admin_id, moderated_at, proposals_count, views_count, hired_at, expires_at, created_at, updated_at').eq('id', jobId).maybeSingle();
     if (error) throw new AppError('Failed to load the job.', 500, 'JOB_LOAD_FAILED', error);
     if (!data) throw new NotFoundError('Job');
     return data;
@@ -668,13 +674,13 @@ export class AdminService extends BaseService {
 
     if (rpcError) {
       if (rpcError.code === '23514' || rpcError.code === '23505') {
-        throw new ConflictError(rpcError.message);
+        throw new ConflictError();
       }
       if (rpcError.code === 'P0002' || rpcError.code === 'P0001') {
         throw new NotFoundError('Job');
       }
       if (rpcError.code === '42501') {
-        throw new ForbiddenError(rpcError.message);
+        throw new ForbiddenError();
       }
       throw new AppError('Failed to update the job.', 500, 'JOB_UPDATE_FAILED', rpcError);
     }
@@ -746,7 +752,7 @@ export class AdminService extends BaseService {
 
     const { data: proposal, error } = await db
       .from('proposals')
-      .select('*')
+      .select('id, job_id, consultant_id, cover_letter_markdown, technical_solution_markdown, proposed_duration_weeks, proposed_price_cents, status, client_viewed_at, submitted_at, created_at, updated_at')
       .eq('id', proposalId)
       .maybeSingle();
     if (error) {
@@ -896,29 +902,50 @@ export class AdminService extends BaseService {
   static async listFailedTransactions(
     userId: string,
     filters: AdminPaymentFilterInput
-  ): Promise<{ payments: Record<string, unknown>[]; payouts: Record<string, unknown>[] }> {
+  ): Promise<{ payments: Paginated<Record<string, unknown>>; payouts: Paginated<Record<string, unknown>> }> {
     await this.requireAdmin(userId);
     const db = createAdminClient();
-    const limit = filters.limit;
-
-    const [{ data: payments, error: pErr }, { data: payouts, error: oErr }] = await Promise.all([
-      db
+    const from = (filters.page - 1) * filters.limit;
+    const to = from + filters.limit - 1;
+    let paymentQuery = db
         .from('payments')
-        .select('id, contract_id, gross_amount_cents, currency, status, razorpay_payment_id, created_at')
+        .select('id, contract_id, gross_amount_cents, currency, status, razorpay_payment_id, created_at', { count: 'exact' })
         .eq('status', 'failed')
         .order('created_at', { ascending: false })
-        .limit(limit),
-      db
+        .order('id', { ascending: false })
+        .range(from, to);
+    if (filters.contractId) paymentQuery = paymentQuery.eq('contract_id', filters.contractId);
+
+    let paymentIds: string[] | null = null;
+    if (filters.contractId) {
+      const { data, error } = await db.from('payments').select('id').eq('contract_id', filters.contractId);
+      if (error) throw new AppError('Failed to filter failed payouts.', 500, 'FAILED_TX_QUERY', error);
+      paymentIds = (data ?? []).map((row) => row.id as string);
+    }
+
+    let payoutQuery = db
         .from('payouts')
-        .select('id, payment_id, consultant_id, amount_cents, currency, status, failure_reason, razorpay_transfer_id, created_at')
+        .select('id, payment_id, consultant_id, amount_cents, currency, status, failure_reason, razorpay_transfer_id, created_at', { count: 'exact' })
         .eq('status', 'failed')
         .order('created_at', { ascending: false })
-        .limit(limit),
+        .order('id', { ascending: false })
+        .range(from, to);
+    if (filters.contractId) {
+      if (!paymentIds?.length) return { payments: { rows: [], total: 0, page: filters.page, limit: filters.limit }, payouts: { rows: [], total: 0, page: filters.page, limit: filters.limit } };
+      payoutQuery = payoutQuery.in('payment_id', paymentIds);
+    }
+
+    const [{ data: payments, error: pErr, count: paymentCount }, { data: payouts, error: oErr, count: payoutCount }] = await Promise.all([
+      paymentQuery,
+      payoutQuery,
     ]);
 
     if (pErr) throw new AppError('Failed to load failed payments.', 500, 'FAILED_TX_QUERY', pErr);
     if (oErr) throw new AppError('Failed to load failed payouts.', 500, 'FAILED_TX_QUERY', oErr);
-    return { payments: payments ?? [], payouts: payouts ?? [] };
+    return {
+      payments: { rows: payments ?? [], total: paymentCount ?? 0, page: filters.page, limit: filters.limit },
+      payouts: { rows: payouts ?? [], total: payoutCount ?? 0, page: filters.page, limit: filters.limit },
+    };
   }
 
 
@@ -969,7 +996,7 @@ export class AdminService extends BaseService {
 
     const { data: dispute, error } = await db
       .from('disputes')
-      .select('*')
+      .select('id, contract_id, milestone_id, initiator_user_id, respondent_user_id, reason, initiator_statement, respondent_statement, evidence_storage_paths, claimed_amount_cents, status, resolution_summary, resolved_by_admin_id, resolved_at, created_at, updated_at')
       .eq('id', disputeId)
       .maybeSingle();
     if (error) throw new AppError('Failed to load the dispute.', 500, 'DISPUTE_LOAD_FAILED', error);
@@ -1006,7 +1033,7 @@ export class AdminService extends BaseService {
     await this.requireAdmin(userId);
     const { data, error } = await createAdminClient()
       .from('reports')
-      .select('*')
+      .select('id, target_type, target_id, reporter_user_id, reason, status, action_taken, reviewed_by_admin_id, reviewed_at, created_at, updated_at')
       .eq('id', reportId)
       .maybeSingle();
     if (error) throw new AppError('Failed to load the report.', 500, 'REPORT_LOAD_FAILED', error);
@@ -1069,13 +1096,13 @@ export class AdminService extends BaseService {
 
     if (rpcError) {
       if (rpcError.code === '23514' || rpcError.code === '23505') {
-        throw new ConflictError(rpcError.message);
+        throw new ConflictError();
       }
       if (rpcError.code === 'P0002' || rpcError.code === 'P0001') {
         throw new NotFoundError('Dispute');
       }
       if (rpcError.code === '42501') {
-        throw new ForbiddenError(rpcError.message);
+        throw new ForbiddenError();
       }
       throw new AppError('Failed to update the dispute.', 500, 'DISPUTE_UPDATE_FAILED', rpcError);
     }
@@ -1177,13 +1204,13 @@ export class AdminService extends BaseService {
 
     if (rpcError) {
       if (rpcError.code === '23514' || rpcError.code === '23505') {
-        throw new ConflictError(rpcError.message);
+        throw new ConflictError();
       }
       if (rpcError.code === 'P0002' || rpcError.code === 'P0001') {
         throw new NotFoundError('Report');
       }
       if (rpcError.code === '42501') {
-        throw new ForbiddenError(rpcError.message);
+        throw new ForbiddenError();
       }
       throw new AppError('Failed to update the report.', 500, 'REPORT_UPDATE_FAILED', rpcError);
     }

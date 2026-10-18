@@ -26,5 +26,5 @@ export async function GET(request: NextRequest) {
       success: true,
       data: await AdminService.listPayouts(auth.userId, filters),
     });
-  });
+  }, request);
 }

@@ -708,4 +708,66 @@ describe('job listing visibility and filters', () => {
     expect(inFilter('status')).toEqual(expect.arrayContaining(['open', 'in_review']));
     expect(inFilter('status')).not.toContain('draft');
   });
+
+  it('sanitizes search input and constructs valid .or filter', async () => {
+    mockGetCurrentUser.mockResolvedValue(null);
+
+    await JobService.getJobs({ search: 'CPI Integration' });
+
+    expect(orFilter()).toBe('title.ilike.%CPI Integration%,description_markdown.ilike.%CPI Integration%');
+  });
+
+  it('strips PostgREST delimiters and SQL wildcards to prevent filter injection', async () => {
+    mockGetCurrentUser.mockResolvedValue(null);
+
+    await JobService.getJobs({ search: 'SAP,status.eq.draft%_ "injected"' });
+
+    expect(orFilter()).toBe('title.ilike.%SAPstatus.eq.draft injected%,description_markdown.ilike.%SAPstatus.eq.draft injected%');
+  });
+
+  it('does not emit .or filter when search contains only delimiters or wildcards', async () => {
+    mockGetCurrentUser.mockResolvedValue(null);
+
+    await JobService.getJobs({ search: '%,,""()' });
+
+    expect(orFilter()).toBeUndefined();
+  });
+
+  it('preserves legitimate SAP terms with slashes, hyphens, dots, and unicode while stripping delimiters', async () => {
+    mockGetCurrentUser.mockResolvedValue(null);
+
+    await JobService.getJobs({ search: 'SAP S/4HANA & CPI-PI v2.0 (München);' });
+
+    expect(orFilter()).toBe(
+      'title.ilike.%SAP S/4HANA & CPI-PI v2.0 München%,description_markdown.ilike.%SAP S/4HANA & CPI-PI v2.0 München%'
+    );
+  });
+
+  it('bounds excessively long search strings to 100 characters to prevent DoS', async () => {
+    mockGetCurrentUser.mockResolvedValue(null);
+
+    const longQuery = 'A'.repeat(250);
+    await JobService.getJobs({ search: longQuery });
+
+    const expected100 = 'A'.repeat(100);
+    expect(orFilter()).toBe(
+      `title.ilike.%${expected100}%,description_markdown.ilike.%${expected100}%`
+    );
+  });
+
+  it('strips control characters and collapses repeated whitespace in search terms', async () => {
+    mockGetCurrentUser.mockResolvedValue(null);
+
+    await JobService.getJobs({ search: '  SAP \x00\r\n\t   CPI  ' });
+
+    expect(orFilter()).toBe('title.ilike.%SAP CPI%,description_markdown.ilike.%SAP CPI%');
+  });
+
+  it('handles unexpected non-string search input gracefully without error', async () => {
+    mockGetCurrentUser.mockResolvedValue(null);
+
+    await JobService.getJobs({ search: 12345 as unknown as string });
+
+    expect(orFilter()).toBeUndefined();
+  });
 });

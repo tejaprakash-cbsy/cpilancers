@@ -56,7 +56,7 @@ export async function requireRole(allowed: readonly UserRole[]): Promise<UserRol
  * allowed to see -- an infinite redirect loop. This preserves the existing,
  * documented admin behaviour rather than inventing a new one.
  */
-export const CLIENT_ROLES: readonly UserRole[] = ['client', 'admin'];
+export const CLIENT_ROLES: readonly UserRole[] = ['client'];
 
 /** The roles allowed on consultant-only surfaces. */
 export const CONSULTANT_ROLES: readonly UserRole[] = ['consultant'];

@@ -214,10 +214,19 @@ export class JobService {
         .from('jobs')
         .select('*', { count: 'exact' });
 
-      // Search
-      if (options.search) {
-        const searchTerm = `%${options.search}%`;
-        query = query.or(`title.ilike.${searchTerm},description_markdown.ilike.${searchTerm}`);
+      // Search: bound length and sanitize delimiters to prevent PostgREST logic tree injection
+      if (typeof options.search === 'string' && options.search.trim().length > 0) {
+        // 1. Bound search length to prevent URL bloat and resource exhaustion (DoS)
+        const bounded = options.search.slice(0, 100);
+        // 2. Strip control characters, SQL LIKE wildcards (% and _), and PostgREST delimiters (, () " \ ;)
+        const cleanSearch = bounded
+          .replace(/[\u0000-\u001f\u007f%_(),";\\]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (cleanSearch.length > 0) {
+          const searchTerm = `%${cleanSearch}%`;
+          query = query.or(`title.ilike.${searchTerm},description_markdown.ilike.${searchTerm}`);
+        }
       }
 
       // SAP Products - not stored in jobs table; ignore for now

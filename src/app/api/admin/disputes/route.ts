@@ -14,13 +14,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { AdminService } from '@/services/admin.service';
-import { adminDisputeFilterSchema, adminDisputeUpdateSchema } from '@/lib/validations/admin.schemas';
+import { adminDisputeFilterSchema } from '@/lib/validations/admin.schemas';
 import { adminRoute, requireAdminUser } from '@/lib/admin/route-helpers';
-
-function targetId(request: NextRequest): string {
-  const segments = request.nextUrl.pathname.split('/').filter(Boolean);
-  return segments[segments.length - 1] ?? '';
-}
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdminUser(request);
@@ -37,16 +32,5 @@ export async function GET(request: NextRequest) {
       success: true,
       data: await AdminService.listDisputes(auth.userId, filters),
     });
-  });
-}
-
-export async function PATCH(request: NextRequest) {
-  const auth = await requireAdminUser(request);
-  if ('response' in auth) return auth.response;
-
-  return adminRoute(async () => {
-    const input = adminDisputeUpdateSchema.parse(await request.json());
-    const data = await AdminService.updateDispute(auth.userId, targetId(request), input, auth.audit);
-    return NextResponse.json({ success: true, data });
-  });
+  }, request);
 }

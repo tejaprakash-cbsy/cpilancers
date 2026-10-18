@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AdminService } from '@/services/admin.service';
 import { adminUserModerationSchema } from '@/lib/validations/admin.schemas';
-import { adminRoute, requireAdminUser } from '@/lib/admin/route-helpers';
+import { adminRoute, parseAdminResourceId, requireAdminUser } from '@/lib/admin/route-helpers';
 
 function targetId(request: NextRequest): string {
   const segments = request.nextUrl.pathname.split('/').filter(Boolean);
@@ -25,9 +25,9 @@ export async function GET(request: NextRequest) {
   if ('response' in auth) return auth.response;
 
   return adminRoute(async () => {
-    const data = await AdminService.getUserDetail(auth.userId, targetId(request));
+    const data = await AdminService.getUserDetail(auth.userId, parseAdminResourceId(targetId(request)));
     return NextResponse.json({ success: true, data });
-  });
+  }, request);
 }
 
 export async function PATCH(request: NextRequest) {
@@ -36,7 +36,7 @@ export async function PATCH(request: NextRequest) {
 
   return adminRoute(async () => {
     const input = adminUserModerationSchema.parse(await request.json());
-    const data = await AdminService.moderateUser(auth.userId, targetId(request), input, auth.audit);
+    const data = await AdminService.moderateUser(auth.userId, parseAdminResourceId(targetId(request)), input, auth.audit);
     return NextResponse.json({ success: true, data });
-  });
+  }, request);
 }

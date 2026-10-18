@@ -19,8 +19,16 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/services/auth.service';
-import { formatErrorResponse } from '@/lib/errors';
+import { formatErrorResponse, ValidationError } from '@/lib/errors';
+import { CORRELATION_ID_HEADER, resolveCorrelationId } from '@/lib/security/correlation';
 import type { AuditContext } from '@/services/admin.service';
+import { adminResourceIdSchema } from '@/lib/validations/admin.schemas';
+
+export function parseAdminResourceId(value: string): string {
+  const parsed = adminResourceIdSchema.safeParse(value);
+  if (!parsed.success) throw new ValidationError('Invalid resource ID.');
+  return parsed.data;
+}
 
 /**
  * Resolve the authenticated caller, or return the response that should be sent.
@@ -38,10 +46,11 @@ export async function requireAdminUser(
 > {
   const sessionUser = await AuthService.getCurrentUser();
   if (!sessionUser) {
+    const correlationId = resolveCorrelationId(request);
     return {
       response: NextResponse.json(
-        { success: false, error: { message: 'Authentication required.', code: 'UNAUTHORIZED' } },
-        { status: 401 }
+        { success: false, error: { message: 'Authentication required.', code: 'UNAUTHORIZED', correlationId } },
+        { status: 401, headers: { [CORRELATION_ID_HEADER]: correlationId } }
       ),
     };
   }
@@ -76,10 +85,15 @@ export function readAuditContext(request: NextRequest): AuditContext {
  * rather than an HTML stack trace from the framework.
  */
 export function adminRoute(
-  handler: () => Promise<NextResponse>
+  handler: () => Promise<NextResponse>,
+  request?: NextRequest
 ): Promise<NextResponse> {
   return handler().catch((error: unknown) => {
-    const formatted = formatErrorResponse(error);
-    return NextResponse.json(formatted, { status: formatted.statusCode });
+    const correlationId = resolveCorrelationId(request);
+    const formatted = formatErrorResponse(error, correlationId);
+    return NextResponse.json(formatted, {
+      status: formatted.statusCode,
+      headers: { [CORRELATION_ID_HEADER]: correlationId },
+    });
   });
 }

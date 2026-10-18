@@ -58,8 +58,6 @@ const envSchema = z.object({
   NEXT_PUBLIC_ENABLE_REGISTRATION: z.string().default('true').transform((val) => val === 'true'),
   NEXT_PUBLIC_ENABLE_MESSAGING: z.string().default('true').transform((val) => val === 'true'),
 
-  // Admin
-  ADMIN_EMAILS: z.string().default(''),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -70,7 +68,13 @@ function validateEnv(): Env {
 
   const clientEnv = {
     NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME || 'SAP Integration Marketplace',
-    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+    NEXT_PUBLIC_APP_URL:
+      process.env.NEXT_PUBLIC_APP_URL ||
+      (process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : 'http://localhost:3000'),
     NODE_ENV: (process.env.NODE_ENV as 'development' | 'test' | 'production') || 'development',
     SUPABASE_URL: undefined,
     SUPABASE_PUBLISHABLE_KEY: undefined,
@@ -82,7 +86,6 @@ function validateEnv(): Env {
     NEXT_PUBLIC_RAZORPAY_KEY_ID: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
     NEXT_PUBLIC_ENABLE_REGISTRATION: process.env.NEXT_PUBLIC_ENABLE_REGISTRATION || 'true',
     NEXT_PUBLIC_ENABLE_MESSAGING: process.env.NEXT_PUBLIC_ENABLE_MESSAGING || 'true',
-    ADMIN_EMAILS: process.env.ADMIN_EMAILS || '',
     EMAIL_FROM: process.env.EMAIL_FROM || 'noreply@sapintegration.com',
   };
 

@@ -43,9 +43,6 @@ declare namespace NodeJS {
     NEXT_PUBLIC_ENABLE_REGISTRATION: string;
     NEXT_PUBLIC_ENABLE_MESSAGING: string;
 
-    // Admin
-    ADMIN_EMAILS: string;
-
     // Sentry (Optional)
     NEXT_PUBLIC_SENTRY_DSN?: string;
     SENTRY_AUTH_TOKEN?: string;

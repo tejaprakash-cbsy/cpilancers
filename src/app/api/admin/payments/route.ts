@@ -39,5 +39,5 @@ export async function GET(request: NextRequest) {
       success: true,
       data: await AdminService.listPayments(auth.userId, filters),
     });
-  });
+  }, request);
 }

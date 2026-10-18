@@ -13,6 +13,8 @@ import { requireRole, CONSULTANT_ROLES } from '@/lib/auth/require-role';
  * group, so these pages are served at `/proposals/...` despite living under a
  * consultant-named folder.
  */
+export const dynamic = 'force-dynamic';
+
 export default async function ConsultantLayout({ children }: { children: React.ReactNode }) {
   await requireRole(CONSULTANT_ROLES);
   return <>{children}</>;

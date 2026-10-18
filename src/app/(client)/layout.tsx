@@ -12,6 +12,8 @@ import { requireRole, CLIENT_ROLES } from '@/lib/auth/require-role';
  * group's client components are rendered or fetch anything. The APIs below it
  * still enforce the same rule independently.
  */
+export const dynamic = 'force-dynamic';
+
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
   await requireRole(CLIENT_ROLES);
   return <>{children}</>;

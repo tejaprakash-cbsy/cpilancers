@@ -29,12 +29,10 @@ describe('role -> home path mapping', () => {
     expect(roleHomePath('consultant')).not.toBe('/dashboard/client');
   });
 
-  it('routes an admin to a destination that exists rather than a 404', () => {
-    // There is no admin page in this app yet -- only /api/admin/* -- so the
-    // documented fallback is the client dashboard. This assertion exists to
-    // fail loudly if that fallback ever points at a missing route.
+  it('routes an admin to the dedicated /admin dashboard', () => {
     const path = roleHomePath('admin');
     expect(path).toBe(ROLE_HOME_PATH.admin);
+    expect(path).toBe('/admin');
     expect(path.startsWith('/')).toBe(true);
   });
 
@@ -67,6 +65,10 @@ describe('resolvePostLoginPath honours the caller role', () => {
 
   it('routes a client with no ?next= to the client dashboard', () => {
     expect(resolvePostLoginPath('client')).toBe('/dashboard/client');
+  });
+
+  it('routes an admin with no ?next= to the admin dashboard', () => {
+    expect(resolvePostLoginPath('admin')).toBe('/admin');
   });
 
   it('routes a consultant who logged in with a null role to the default home', () => {

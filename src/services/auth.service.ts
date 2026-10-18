@@ -26,6 +26,18 @@ export interface LoginParams {
   password: string;
 }
 
+function getAppUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (configured) return configured.replace(/\/+$/, '');
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  return 'http://localhost:3000';
+}
+
 export class AuthService {
   /**
    * Register a new user with email/password and role
@@ -55,7 +67,7 @@ export class AuthService {
         email: params.email.toLowerCase(),
         password: params.password,
         options: {
-          emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+          emailRedirectTo: `${getAppUrl()}/auth/callback`,
           data: {
             role: params.role,
             first_name: params.firstName,
@@ -183,7 +195,7 @@ export class AuthService {
       const supabase = await createClient();
 
       const { error } = await supabase.auth.resetPasswordForEmail(email.toLowerCase(), {
-        redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/reset-password`,
+        redirectTo: `${getAppUrl()}/auth/reset-password`,
       });
 
       if (error) {
@@ -296,7 +308,7 @@ export class AuthService {
         type: 'signup',
         email: email.toLowerCase(),
         options: {
-          emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+          emailRedirectTo: `${getAppUrl()}/auth/callback`,
         },
       });
 

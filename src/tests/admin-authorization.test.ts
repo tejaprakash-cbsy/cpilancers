@@ -454,6 +454,29 @@ describe('administrator authorization', () => {
     expect(overview.active_clients).toBe(1);
     expect(overview.platform_revenue_cents).toBe(0);
   });
+
+  it('returns independently paginated failed payments and payouts with relationship filtering', async () => {
+    db.payments.push(
+      { id: 'payment-c1', contract_id: 'contract-c1', status: 'failed', created_at: '2026-01-02' },
+      { id: 'payment-c2', contract_id: 'contract-c2', status: 'failed', created_at: '2026-01-01' },
+      { id: 'payment-ok', contract_id: 'contract-c1', status: 'released', created_at: '2026-01-03' },
+    );
+    db.payouts.push(
+      { id: 'payout-c1', payment_id: 'payment-c1', status: 'failed', created_at: '2026-01-02' },
+      { id: 'payout-c2', payment_id: 'payment-c2', status: 'failed', created_at: '2026-01-01' },
+    );
+
+    const result = await AdminService.listFailedTransactions(ADMIN, {
+      page: 1,
+      limit: 1,
+      contractId: 'contract-c1',
+    });
+
+    expect(result.payments).toMatchObject({ total: 1, page: 1, limit: 1 });
+    expect(result.payouts).toMatchObject({ total: 1, page: 1, limit: 1 });
+    expect(result.payments.rows[0]).toMatchObject({ id: 'payment-c1', status: 'failed' });
+    expect(result.payouts.rows[0]).toMatchObject({ id: 'payout-c1', status: 'failed' });
+  });
 });
 
 // ---------------------------------------------------------------------------

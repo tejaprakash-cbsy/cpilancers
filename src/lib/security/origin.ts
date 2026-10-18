@@ -49,6 +49,67 @@ export function trustedOrigin(): string | null {
   }
 }
 
+/**
+ * Collect all configured trusted origins from server configuration and deployment environment.
+ * Supports:
+ * - NEXT_PUBLIC_APP_URL (single or comma-separated)
+ * - ALLOWED_ORIGINS (comma-separated)
+ * - Vercel system environment variables (VERCEL_PROJECT_PRODUCTION_URL, VERCEL_URL, VERCEL_BRANCH_URL, NEXT_PUBLIC_VERCEL_URL)
+ */
+export function getTrustedOrigins(): Set<string> {
+  const origins = new Set<string>();
+
+  // 1. NEXT_PUBLIC_APP_URL (comma-separated or single)
+  const appUrls = process.env.NEXT_PUBLIC_APP_URL?.split(',') ?? [];
+  for (const raw of appUrls) {
+    const trimmed = raw.trim();
+    if (trimmed) {
+      try {
+        origins.add(new URL(trimmed).origin);
+      } catch {
+        // ignore malformed entries
+      }
+    }
+  }
+
+  // 2. ALLOWED_ORIGINS (comma-separated)
+  const allowed = process.env.ALLOWED_ORIGINS?.split(',') ?? [];
+  for (const raw of allowed) {
+    const trimmed = raw.trim();
+    if (trimmed) {
+      try {
+        origins.add(new URL(trimmed).origin);
+      } catch {
+        // ignore malformed entries
+      }
+    }
+  }
+
+  // 3. Vercel deployment URLs (automatically injected by Vercel platform)
+  const vercelUrls = [
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    process.env.VERCEL_URL,
+    process.env.VERCEL_BRANCH_URL,
+    process.env.NEXT_PUBLIC_VERCEL_URL,
+  ];
+
+  for (const raw of vercelUrls) {
+    const trimmed = raw?.trim();
+    if (trimmed) {
+      const formatted = trimmed.startsWith('http://') || trimmed.startsWith('https://')
+        ? trimmed
+        : `https://${trimmed}`;
+      try {
+        origins.add(new URL(formatted).origin);
+      } catch {
+        // ignore malformed entries
+      }
+    }
+  }
+
+  return origins;
+}
+
 export type OriginDecision =
   | { allow: true; reason: 'safe-method' | 'exempt-path' | 'origin-absent' | 'origin-trusted' }
   | { allow: false; reason: 'origin-untrusted' | 'origin-malformed' | 'origin-unconfigured' };
@@ -57,8 +118,15 @@ export type OriginDecision =
  * Decide whether a request may proceed.
  *
  * `origin` is the raw `Origin` header value, or `null` when the header is absent.
+ * `requestOrigin` is the origin of the incoming request (e.g. `request.nextUrl.origin`).
+ * When present and equal to `origin`, it confirms a legitimate same-origin browser request.
  */
-export function evaluateOrigin(method: string, pathname: string, origin: string | null): OriginDecision {
+export function evaluateOrigin(
+  method: string,
+  pathname: string,
+  origin: string | null,
+  requestOrigin?: string | null
+): OriginDecision {
   if (!isUnsafeMethod(method)) return { allow: true, reason: 'safe-method' };
   if (ORIGIN_EXEMPT_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
     return { allow: true, reason: 'exempt-path' };
@@ -66,12 +134,6 @@ export function evaluateOrigin(method: string, pathname: string, origin: string 
   // Absent Origin: server-to-server callers, native clients and some proxies send
   // none. Requiring it would break legitimate traffic, so absence is allowed.
   if (origin === null) return { allow: true, reason: 'origin-absent' };
-
-  const expected = trustedOrigin();
-  // Fail closed. If the deployment origin is not configured we cannot decide what
-  // is trusted, so a browser-style request carrying an Origin is refused rather
-  // than waved through.
-  if (expected === null) return { allow: false, reason: 'origin-unconfigured' };
 
   let parsed: URL;
   try {
@@ -81,6 +143,32 @@ export function evaluateOrigin(method: string, pathname: string, origin: string 
     return { allow: false, reason: 'origin-malformed' };
   }
 
-  if (parsed.origin === expected) return { allow: true, reason: 'origin-trusted' };
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    return { allow: false, reason: 'origin-malformed' };
+  }
+
+  // 1. Same-origin request: client Origin matches the server's own request origin
+  if (requestOrigin) {
+    try {
+      const parsedRequest = new URL(requestOrigin);
+      if (parsed.origin === parsedRequest.origin) {
+        return { allow: true, reason: 'origin-trusted' };
+      }
+    } catch {
+      // ignore invalid requestOrigin
+    }
+  }
+
+  // 2. Explicitly trusted origin (NEXT_PUBLIC_APP_URL, ALLOWED_ORIGINS, Vercel env vars)
+  const trusted = getTrustedOrigins();
+  if (trusted.has(parsed.origin)) {
+    return { allow: true, reason: 'origin-trusted' };
+  }
+
+  // Fail closed if no trusted origins are configured and no requestOrigin was provided
+  if (trusted.size === 0 && !requestOrigin) {
+    return { allow: false, reason: 'origin-unconfigured' };
+  }
+
   return { allow: false, reason: 'origin-untrusted' };
 }

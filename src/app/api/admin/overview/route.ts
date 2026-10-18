@@ -17,5 +17,5 @@ export async function GET(request: NextRequest) {
   return adminRoute(async () => {
     const overview = await AdminService.getOverview(auth.userId, auth.audit);
     return NextResponse.json({ success: true, data: overview });
-  });
+  }, request);
 }

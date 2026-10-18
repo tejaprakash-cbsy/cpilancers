@@ -240,6 +240,9 @@ export const adminPaginationSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
+/** Dynamic admin resources use the repository's installed Zod UUID validator. */
+export const adminResourceIdSchema = z.uuid({ error: 'Invalid resource ID.' });
+
 /** Search across users. Matched case-insensitively on email. */
 export const adminUserSearchSchema = adminPaginationSchema.extend({
   query: z.string().trim().min(1).max(200).optional(),

@@ -4,6 +4,8 @@ import { AuthService } from '@/services/auth.service';
 import { redirect } from 'next/navigation';
 import type { ForumCategory } from '@/types/database';
 
+export const dynamic = 'force-dynamic';
+
 export default async function NewDiscussionPage() {
   const user = await AuthService.getCurrentUser().catch(() => null);
   if (!user) {

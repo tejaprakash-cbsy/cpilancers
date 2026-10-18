@@ -33,5 +33,5 @@ export async function GET(request: NextRequest) {
       success: true,
       data: await AdminService.searchProposals(auth.userId, filters),
     });
-  });
+  }, request);
 }

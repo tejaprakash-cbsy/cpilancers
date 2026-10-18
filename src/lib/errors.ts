@@ -92,15 +92,49 @@ function isJsonSyntaxError(error: unknown): boolean {
 /**
  * Standard API error formatter for route handlers
  */
-export function formatErrorResponse(error: unknown) {
+const PUBLIC_MESSAGES: Record<string, string> = {
+  UNAUTHORIZED: 'Authentication required.',
+  FORBIDDEN: 'Access denied.',
+  NOT_FOUND: 'Resource not found.',
+  VALIDATION_ERROR: 'Validation failed.',
+  CONFLICT: 'Resource state conflict.',
+};
+
+function safeDetails(details: unknown): ValidationIssueDetail[] | undefined {
+  if (!Array.isArray(details)) return undefined;
+  const safe = details.filter((item) => {
+    if (!item || typeof item !== 'object') return false;
+    const value = item as Record<string, unknown>;
+    return typeof value.code === 'string' && typeof value.message === 'string' &&
+      (typeof value.field === 'string' || Array.isArray(value.path));
+  }).map((item) => {
+    const value = item as Record<string, unknown>;
+    const path = typeof value.field === 'string' ? value.field : (value.path as unknown[]).map(String).join('.');
+    return { field: path, code: value.code as string, message: value.message as string };
+  });
+  return safe.length ? safe : undefined;
+}
+
+export function formatErrorResponse(error: unknown, correlationId?: string) {
+  const requestId = correlationId;
   if (error instanceof AppError) {
+    const message = error.statusCode >= 500
+      ? 'Request could not be completed.'
+      : error.code === 'NOT_FOUND'
+      ? 'Resource not found.'
+      : error.details
+      ? (PUBLIC_MESSAGES[error.code] ?? 'Request could not be completed.')
+      : (error.message || (PUBLIC_MESSAGES[error.code] ?? 'Request could not be completed.'));
+    const publicError: { message: string; code: string; details?: ValidationIssueDetail[]; correlationId?: string } = {
+      message,
+      code: error.code,
+    };
+    const details = error.details instanceof z.ZodError ? toValidationDetails(error.details) : safeDetails(error.details);
+    if (details) publicError.details = details;
+    if (requestId) publicError.correlationId = requestId;
     return {
       success: false,
-      error: {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-      },
+      error: publicError,
       statusCode: error.statusCode,
     };
   }
@@ -116,6 +150,7 @@ export function formatErrorResponse(error: unknown) {
       error: {
         message: 'Request body must be valid JSON.',
         code: 'INVALID_JSON',
+        ...(requestId ? { correlationId: requestId } : {}),
       },
       statusCode: 400,
     };
@@ -130,6 +165,7 @@ export function formatErrorResponse(error: unknown) {
       error: {
         message: 'Request body must be a JSON object.',
         code: 'INVALID_REQUEST_BODY',
+        ...(requestId ? { correlationId: requestId } : {}),
       },
       statusCode: 400,
     };
@@ -146,21 +182,25 @@ export function formatErrorResponse(error: unknown) {
         message: 'Validation failed',
         code: 'VALIDATION_ERROR',
         details,
+        ...(requestId ? { correlationId: requestId } : {}),
       },
       statusCode: 400,
     };
   }
 
-  const err = error instanceof Error ? error : new Error('Unknown server error');
-  console.error('[Unhandled Server Error]:', err);
+  const err = error instanceof Error ? error : undefined;
+  console.error('[Unhandled Server Error]', {
+    correlationId: requestId,
+    name: err?.name ?? 'UnknownError',
+    code: error instanceof AppError ? error.code : 'INTERNAL_SERVER_ERROR',
+  });
 
   return {
     success: false,
     error: {
-      message: process.env.NODE_ENV === 'production'
-        ? 'An unexpected error occurred. Please try again later.'
-        : err?.message || 'Unknown server error',
+      message: 'An unexpected error occurred. Please try again later.',
       code: 'INTERNAL_SERVER_ERROR',
+      ...(requestId ? { correlationId: requestId } : {}),
     },
     statusCode: 500,
   };

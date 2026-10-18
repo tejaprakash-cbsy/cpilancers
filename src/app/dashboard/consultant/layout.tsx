@@ -12,6 +12,8 @@ import { requireRole, CONSULTANT_ROLES } from '@/lib/auth/require-role';
  * that the denied page's content is never rendered -- verified in the F-03
  * report.
  */
+export const dynamic = 'force-dynamic';
+
 export default async function ConsultantDashboardLayout({ children }: { children: React.ReactNode }) {
   await requireRole(CONSULTANT_ROLES);
   return <>{children}</>;

@@ -36,6 +36,8 @@ const process = [
   ['Work with confidence', 'Clear terms, protected payments, and support when you need it.'],
 ];
 
+export const dynamic = 'force-dynamic';
+
 export default async function HomePage() {
   let recentJobs: Job[] = [];
   try {

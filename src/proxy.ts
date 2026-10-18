@@ -12,7 +12,12 @@ export async function proxy(request: NextRequest) {
   // never partially execute. It is centralised here rather than repeated across
   // the 69 API route files, and it does not change any existing authentication
   // or authorization decision: it only refuses the request earlier.
-  const decision = evaluateOrigin(request.method, pathname, request.headers.get('origin'));
+  const decision = evaluateOrigin(
+    request.method,
+    pathname,
+    request.headers.get('origin'),
+    request.nextUrl.origin
+  );
   if (!decision.allow) {
     // Deliberately generic: it does not disclose what the expected origin is, so
     // the response cannot be used to probe the deployment's configuration.

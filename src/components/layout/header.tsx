@@ -13,6 +13,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { ClientAuthService } from '@/services/client-api.service';
+import { roleHomePath } from '@/lib/auth/role-redirects';
 import type { User } from '@/types/database';
 
 export const Header: React.FC = () => {
@@ -70,7 +71,7 @@ export const Header: React.FC = () => {
               <div className="w-16 h-8 animate-pulse bg-slate-100 rounded-md"></div>
             ) : user ? (
               <>
-                <Link href={`/dashboard/${user.role === 'consultant' ? 'consultant' : 'client'}`} className="text-[12px] text-[#172033] hover:text-[#365cf5] font-semibold">
+                <Link href={roleHomePath(user.role)} className="text-[12px] text-[#172033] hover:text-[#365cf5] font-semibold">
                   Dashboard
                 </Link>
                 <form action="/api/auth/logout" method="POST">
@@ -128,7 +129,7 @@ export const Header: React.FC = () => {
               <div className="h-10 animate-pulse bg-slate-100 rounded-md w-full"></div>
             ) : user ? (
               <>
-                <Link href={`/dashboard/${user.role === 'consultant' ? 'consultant' : 'client'}`} onClick={() => setMobileMenuOpen(false)}>
+                <Link href={roleHomePath(user.role)} onClick={() => setMobileMenuOpen(false)}>
                   <Button variant="primary" className="w-full justify-center">
                     Dashboard
                   </Button>

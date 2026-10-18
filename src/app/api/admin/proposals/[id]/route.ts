@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { AdminService } from '@/services/admin.service';
-import { adminRoute, requireAdminUser } from '@/lib/admin/route-helpers';
+import { adminRoute, parseAdminResourceId, requireAdminUser } from '@/lib/admin/route-helpers';
 
 function targetId(request: NextRequest): string {
   const segments = request.nextUrl.pathname.split('/').filter(Boolean);
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   if ('response' in auth) return auth.response;
 
   return adminRoute(async () => {
-    const data = await AdminService.investigateProposal(auth.userId, targetId(request));
+    const data = await AdminService.investigateProposal(auth.userId, parseAdminResourceId(targetId(request)));
     return NextResponse.json({ success: true, data });
-  });
+  }, request);
 }

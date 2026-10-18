@@ -110,3 +110,76 @@ describe('F-04 fail-closed behaviour', () => {
     expect(evaluateOrigin('POST', '/api/profile', null).allow).toBe(true);
   });
 });
+
+describe('Same-origin requests & Vercel deployment support', () => {
+  it('accepts legitimate same-origin requests where Origin matches request destination', () => {
+    expect(
+      evaluateOrigin(
+        'POST',
+        '/api/auth/register',
+        'https://sap-integration-marketplace.vercel.app',
+        'https://sap-integration-marketplace.vercel.app'
+      )
+    ).toEqual({
+      allow: true,
+      reason: 'origin-trusted',
+    });
+  });
+
+  it('rejects cross-origin requests even when requestOrigin is provided', () => {
+    expect(
+      evaluateOrigin(
+        'POST',
+        '/api/auth/register',
+        'https://evil.example',
+        'https://sap-integration-marketplace.vercel.app'
+      )
+    ).toEqual({
+      allow: false,
+      reason: 'origin-untrusted',
+    });
+  });
+
+  it('accepts Vercel deployment URLs from platform environment variables', () => {
+    const originalVercel = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+    try {
+      process.env.VERCEL_PROJECT_PRODUCTION_URL = 'my-app.vercel.app';
+      expect(
+        evaluateOrigin('POST', '/api/auth/register', 'https://my-app.vercel.app')
+      ).toEqual({
+        allow: true,
+        reason: 'origin-trusted',
+      });
+    } finally {
+      if (originalVercel !== undefined) {
+        process.env.VERCEL_PROJECT_PRODUCTION_URL = originalVercel;
+      } else {
+        delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
+      }
+    }
+  });
+
+  it('supports comma-separated NEXT_PUBLIC_APP_URL origins', () => {
+    process.env.NEXT_PUBLIC_APP_URL = 'https://cpilancers.com, https://preview.cpilancers.com';
+    expect(
+      evaluateOrigin('POST', '/api/profile', 'https://preview.cpilancers.com')
+    ).toEqual({
+      allow: true,
+      reason: 'origin-trusted',
+    });
+  });
+
+  it('supports ALLOWED_ORIGINS comma-separated configuration', () => {
+    process.env.ALLOWED_ORIGINS = 'https://admin.cpilancers.com, https://partner.cpilancers.com';
+    try {
+      expect(
+        evaluateOrigin('POST', '/api/profile', 'https://admin.cpilancers.com')
+      ).toEqual({
+        allow: true,
+        reason: 'origin-trusted',
+      });
+    } finally {
+      delete process.env.ALLOWED_ORIGINS;
+    }
+  });
+});

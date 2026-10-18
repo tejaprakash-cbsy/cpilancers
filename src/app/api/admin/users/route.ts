@@ -32,5 +32,5 @@ export async function GET(request: NextRequest) {
       success: true,
       data: await AdminService.searchUsers(auth.userId, filters),
     });
-  });
+  }, request);
 }

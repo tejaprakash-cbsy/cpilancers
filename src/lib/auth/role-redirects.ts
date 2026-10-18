@@ -14,15 +14,12 @@ import type { UserRole } from '@/types/database';
 /**
  * Where each role lands after signing in.
  *
- * `admin` has no dashboard page in this app yet -- `/api/admin/*` is the only
- * admin surface and `src/app/dashboard` contains only the client and consultant
- * pages -- so admins fall back to the client dashboard rather than a 404. When
- * an admin page is added, this entry is the only thing that needs to change.
+ * Administrators have a dedicated server-guarded dashboard.
  */
 export const ROLE_HOME_PATH: Record<UserRole, string> = {
   client: '/dashboard/client',
   consultant: '/dashboard/consultant',
-  admin: '/dashboard/client',
+  admin: '/admin',
 };
 
 /** The destination used when the role is missing or unrecognised. */
