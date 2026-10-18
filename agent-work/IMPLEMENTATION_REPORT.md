@@ -1563,3 +1563,13 @@ The previously published `src/lib/supabase/admin.ts` supplied a global fetch wra
 - `npx playwright test --list`: passed discovery, 20 tests in 10 files. The relevant public local suite attempted 9 tests and was blocked by `ERR_CONNECTION_REFUSED` because no isolated local server was running.
 
 Production registration remains `REVIEW_REQUIRED` because no authorized production account or registration request was created.
+
+## 2026-10-18 - Privileged Header Fix Publication
+
+- Commit `c1e9a48c661f8dec4dc4f61250b219b6d7c7a81c` was pushed from `master` to `origin/master` using a normal non-force push. The remote branch resolved to the same exact hash after the push.
+- The final diff contained only `src/lib/supabase/admin.ts`, the focused registration/admin-client regression tests, and this report update. Environment files, migrations, production data, secrets, RLS policies, and unrelated Playwright artifacts were excluded.
+- Vercel deployment status for this exact commit is **UNVERIFIED**. The Vercel CLI is logged out, there is no local project link, and unauthenticated provider/status lookups are unavailable. Existing public routes and assets return 200, but that public smoke result cannot identify the deployed commit or prove that the server-only Supabase header fix is live.
+- No production registration request, production test account, Supabase enumeration, database mutation, SQL/migration, secret rotation, or authentication-policy change was performed.
+
+Publication status: **PUSHED; DEPLOYMENT UNVERIFIED**.
+Registration status: **REVIEW_REQUIRED** pending provider deployment confirmation and an authorized end-to-end production registration procedure.
