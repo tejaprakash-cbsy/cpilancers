@@ -1091,6 +1091,51 @@ Performed a comprehensive security assessment and penetration review across all 
 
 Overall status remains `REVIEW_REQUIRED`.
 
+## 2026-10-18 — Registration validation mismatch remediation
+
+### Root cause
+
+The registration page in `src/app/(auth)/register/page.tsx` performed a weaker,
+separate validation pass than the API schema in
+`src/lib/validations/auth.schemas.ts`. In particular, the browser accepted
+one-character names and passwords lacking uppercase, lowercase, or numeric
+characters. It then posted the complete form to `POST /api/auth/register`.
+The route calls `registerSchema.parse()`; Zod rejected those requests with a
+400 `VALIDATION_ERROR`. The page displayed only `data.error.message`, so the
+user saw the generic `Validation failed` message even though the server had
+field-level details. This was confirmed by comparing the payload and schemas
+and by a regression test using the original mismatch scenario. No production
+database or account was accessed.
+
+### Changes
+
+- `src/lib/validations/auth.schemas.ts`: added
+  `getRegisterFieldErrors()`, a safe, field-level adapter around the existing
+  authoritative registration schema.
+- `src/app/(auth)/register/page.tsx`: replaced duplicated client checks with
+  the shared schema adapter, keeping server validation authoritative.
+- `src/services/auth.service.ts`: profile insert failures now clean up the
+  application user row and Supabase Auth user, then return a sanitized 500;
+  they can no longer produce a false registration success or partial state.
+- `src/tests/auth-validation.test.ts`: added regression coverage proving the
+  browser and API reject the same previously-missed inputs.
+- `src/tests/auth-register-route.test.ts`: added sanitized profile-failure
+  status/response coverage.
+
+### Verification
+
+- `npx tsc --noEmit` — PASS (exit 0).
+- `npm run lint` — PASS (exit 0).
+- `npm test -- --run` — PASS: 40 files, 916 tests, 0 failures.
+- `npm run build` — PASS (exit 0); `/api/auth/register` compiled.
+- `git diff --check` — PASS.
+
+Browser production verification was not performed: the requested safety
+boundary prohibits creating accounts or modifying production data, and no
+approved isolated Supabase/browser runtime was available. Deployment was not
+performed. Status remains `REVIEW_REQUIRED` pending review, deployment, and a
+safe non-production/browser verification.
+
 ## 2026-10-16 — Second-Pass Security Challenge, Adversarial Testing & Remediation
 
 Conducted an independent adversarial challenge of earlier security claims and the search sanitization patch, re-audited all authorization boundaries, and hardened data exposure controls.

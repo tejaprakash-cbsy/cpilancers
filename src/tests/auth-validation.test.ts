@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { formatErrorResponse, AppError, ValidationError, UnauthorizedError } from '@/lib/errors';
-import { loginSchema, registerSchema, forgotPasswordSchema } from '@/lib/validations/auth.schemas';
+import {
+  getRegisterFieldErrors,
+  loginSchema,
+  registerSchema,
+  forgotPasswordSchema,
+} from '@/lib/validations/auth.schemas';
 
 /** Mimics a route handler: parse, and on throw format the error. */
 function handleParse<T>(schema: { parse: (v: unknown) => T }, body: unknown) {
@@ -12,6 +17,21 @@ function handleParse<T>(schema: { parse: (v: unknown) => T }, body: unknown) {
 }
 
 describe('Authentication request validation returns HTTP 400', () => {
+  it('uses the same registration rules for browser validation as the API', () => {
+    const errors = getRegisterFieldErrors({
+      firstName: 'A',
+      lastName: 'User',
+      email: 'a@example.com',
+      password: 'password123',
+      confirmPassword: 'password123',
+      role: 'client',
+      agreeToTerms: true,
+    });
+
+    expect(errors.firstName).toBe('Must be at least 2 characters');
+    expect(errors.password).toBe('Password must contain at least one uppercase letter');
+  });
+
   it('maps an invalid login body to 400 VALIDATION_ERROR', () => {
     const result = handleParse(loginSchema, { email: 'not-an-email', password: '' });
     expect(result.ok).toBe(false);

@@ -116,6 +116,11 @@ export class AuthService {
 
       if (profileError) {
         console.error('[DB Error - Create Profile]:', profileError);
+        // Do not report success for a partial registration. Clean up both
+        // application rows and the Auth user so the email can be retried.
+        await adminSupabase.from('users').delete().eq('id', authData.user.id);
+        await adminSupabase.auth.admin.deleteUser(authData.user.id);
+        throw new AppError('Failed to create user profile', 500);
       }
 
       return {

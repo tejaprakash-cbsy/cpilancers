@@ -9,6 +9,7 @@ import { Alert } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { UserPlus, Briefcase, Users } from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
+import { getRegisterFieldErrors } from '@/lib/validations/auth.schemas';
 import type { RegisterFormData } from '@/lib/validations/auth.schemas';
 
 export default function RegisterPage() {
@@ -36,17 +37,7 @@ export default function RegisterPage() {
   };
 
   const validateForm = (): boolean => {
-    const newErrors: Partial<Record<keyof RegisterFormData, string>> = {};
-
-    if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
-    if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required';
-    if (!formData.email.trim()) newErrors.email = 'Email is required';
-    if (!formData.email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) newErrors.email = 'Invalid email format';
-    if (!formData.password) newErrors.password = 'Password is required';
-    if (formData.password.length < 8) newErrors.password = 'Password must be at least 8 characters';
-    if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
-    if (!formData.agreeToTerms) newErrors.agreeToTerms = 'You must agree to the terms';
-
+    const newErrors = getRegisterFieldErrors(formData);
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };

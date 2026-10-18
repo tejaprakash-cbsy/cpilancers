@@ -162,6 +162,28 @@ describe('POST /api/auth/register route tests', () => {
     expect(mockRegister).not.toHaveBeenCalled();
   });
 
+  it('reproduces the former browser/API mismatch as a 400 with field details', async () => {
+    const formerlyAcceptedByBrowser = {
+      ...VALID_CLIENT_PAYLOAD,
+      firstName: 'A',
+      password: 'password123',
+      confirmPassword: 'password123',
+    };
+
+    const res = await POST(registerRequest(formerlyAcceptedByBrowser));
+    expect(res.status).toBe(400);
+
+    const body = await res.json();
+    expect(body.error.code).toBe('VALIDATION_ERROR');
+    expect(body.error.details).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: 'firstName' }),
+        expect.objectContaining({ field: 'password' }),
+      ])
+    );
+    expect(mockRegister).not.toHaveBeenCalled();
+  });
+
   it('handles duplicate user conflict from AuthService gracefully', async () => {
     const { ConflictError } = await import('@/lib/errors');
     mockRegister.mockRejectedValue(new ConflictError('User with this email already exists.'));
@@ -173,6 +195,19 @@ describe('POST /api/auth/register route tests', () => {
     expect(body.success).toBe(false);
     expect(body.error.code).toBe('CONFLICT');
     expect(body.error.message).toBe('User with this email already exists.');
+  });
+
+  it('returns a sanitized 500 when profile creation fails', async () => {
+    const { AppError } = await import('@/lib/errors');
+    mockRegister.mockRejectedValue(new AppError('Failed to create user profile', 500));
+
+    const res = await POST(registerRequest(VALID_CLIENT_PAYLOAD));
+    expect(res.status).toBe(500);
+
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.error.code).toBe('INTERNAL_ERROR');
+    expect(body.error.message).toBe('Request could not be completed.');
   });
 
   it('never leaks password or sensitive fields in error or success responses', async () => {

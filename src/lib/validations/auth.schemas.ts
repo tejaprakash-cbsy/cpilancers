@@ -49,6 +49,24 @@ export const registerSchema = z
 
 export type RegisterFormData = z.infer<typeof registerSchema>;
 
+export function getRegisterFieldErrors(
+  data: unknown
+): Partial<Record<keyof RegisterFormData, string>> {
+  const result = registerSchema.safeParse(data);
+  if (result.success) return {};
+
+  return result.error.issues.reduce<Partial<Record<keyof RegisterFormData, string>>>(
+    (errors, issue) => {
+      const field = issue.path[0];
+      if (typeof field === 'string' && !errors[field as keyof RegisterFormData]) {
+        errors[field as keyof RegisterFormData] = issue.message;
+      }
+      return errors;
+    },
+    {},
+  );
+}
+
 /**
  * Login Form Schema
  */
