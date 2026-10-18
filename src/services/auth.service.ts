@@ -38,6 +38,39 @@ function getAppUrl(): string {
   return 'http://localhost:3000';
 }
 
+function errorMetadata(error: { code?: string; status?: number } | null | undefined) {
+  return {
+    code: error?.code ?? 'unknown',
+    status: error?.status,
+  };
+}
+
+async function cleanupPartialRegistration(
+  adminSupabase: ReturnType<typeof createAdminClient>,
+  userId: string,
+  removeUserRow: boolean,
+) {
+  if (removeUserRow) {
+    try {
+      const { error } = await adminSupabase.from('users').delete().eq('id', userId);
+      if (error) {
+        console.error('[DB Cleanup Error - Delete User Row]:', errorMetadata(error));
+      }
+    } catch (error) {
+      console.error('[DB Cleanup Error - Delete User Row]:', errorMetadata(error as { code?: string; status?: number }));
+    }
+  }
+
+  try {
+    const { error } = await adminSupabase.auth.admin.deleteUser(userId);
+    if (error) {
+      console.error('[Auth Cleanup Error - Delete User]:', errorMetadata(error));
+    }
+  } catch (error) {
+    console.error('[Auth Cleanup Error - Delete User]:', errorMetadata(error as { code?: string; status?: number }));
+  }
+}
+
 export class AuthService {
   /**
    * Register a new user with email/password and role
@@ -51,12 +84,29 @@ export class AuthService {
         throw new ValidationError('Invalid role. Must be client or consultant.');
       }
 
+      // Anonymous SELECT on public.users is revoked by the core RLS policy.
+      // Use the server-only client so duplicate registrations do not fall
+      // through to Auth's enumeration-safe response and become 500s.
+      let adminSupabase: ReturnType<typeof createAdminClient>;
+      try {
+        adminSupabase = createAdminClient();
+      } catch (error) {
+        console.error('[Auth Configuration Error - Register]:', error instanceof Error ? error.message : 'unknown');
+        throw new AppError('Registration is temporarily unavailable.', 503, 'AUTH_CONFIGURATION_ERROR');
+      }
+      const normalizedEmail = params.email.toLowerCase();
+
       // Check if user already exists
-      const { data: existingUser } = await supabase
+      const { data: existingUser, error: existingUserError } = await adminSupabase
         .from('users')
         .select('id')
-        .eq('email', params.email.toLowerCase())
-        .single();
+        .eq('email', normalizedEmail)
+        .maybeSingle();
+
+      if (existingUserError) {
+        console.error('[DB Error - Check Existing User]:', errorMetadata(existingUserError));
+        throw new AppError('Registration is temporarily unavailable.', 503, 'AUTH_REGISTRATION_UNAVAILABLE');
+      }
 
       if (existingUser) {
         throw new ConflictError('An account with this email already exists.');
@@ -64,7 +114,7 @@ export class AuthService {
 
       // Create auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: params.email.toLowerCase(),
+        email: normalizedEmail,
         password: params.password,
         options: {
           emailRedirectTo: `${getAppUrl()}/auth/callback`,
@@ -77,30 +127,36 @@ export class AuthService {
       });
 
       if (authError) {
-        console.error('[Auth Error - Register]:', authError);
+        console.error('[Auth Error - Register]:', errorMetadata(authError));
+        if (authError.code === 'user_already_exists') {
+          throw new ConflictError('An account with this email already exists.');
+        }
         throw new AppError(authError.message, 400, 'AUTH_SIGNUP_ERROR');
       }
 
       if (!authData.user) {
-        throw new AppError('Failed to create user account', 500);
+        // Supabase may intentionally return no user for an existing email
+        // when email enumeration protection is enabled.
+        throw new ConflictError('An account with this email already exists.');
       }
 
       // Use admin client to create user record with role
       // (Regular client cannot insert into users table due to RLS)
-      const adminSupabase = createAdminClient();
-
       const { error: userError } = await adminSupabase.from('users').insert({
         id: authData.user.id,
-        email: params.email.toLowerCase(),
+        email: normalizedEmail,
         role: params.role,
         status: 'active',
         is_email_verified: false,
       });
 
       if (userError) {
-        console.error('[DB Error - Create User]:', userError);
+        console.error('[DB Error - Create User]:', errorMetadata(userError));
         // Attempt cleanup of auth user if DB insert fails
-        await adminSupabase.auth.admin.deleteUser(authData.user.id);
+        await cleanupPartialRegistration(adminSupabase, authData.user.id, false);
+        if (userError.code === '23505') {
+          throw new ConflictError('An account with this email already exists.');
+        }
         throw new AppError('Failed to create user profile', 500);
       }
 
@@ -115,11 +171,10 @@ export class AuthService {
       });
 
       if (profileError) {
-        console.error('[DB Error - Create Profile]:', profileError);
+        console.error('[DB Error - Create Profile]:', errorMetadata(profileError));
         // Do not report success for a partial registration. Clean up both
         // application rows and the Auth user so the email can be retried.
-        await adminSupabase.from('users').delete().eq('id', authData.user.id);
-        await adminSupabase.auth.admin.deleteUser(authData.user.id);
+        await cleanupPartialRegistration(adminSupabase, authData.user.id, true);
         throw new AppError('Failed to create user profile', 500);
       }
 
