@@ -1136,6 +1136,30 @@ approved isolated Supabase/browser runtime was available. Deployment was not
 performed. Status remains `REVIEW_REQUIRED` pending review, deployment, and a
 safe non-production/browser verification.
 
+## 2026-10-18 — Publication attempt
+
+- Reviewed branch and remote state: `master` was aligned with `origin/master`
+  at `488baa7` before publication.
+- Created focused commit
+  `5f2776bac57f2a029bd9d1aebc2b1f85ffcaa8dc`
+  (`fix(auth): align registration validation with API`) containing only the
+  six reviewed registration source, test, and report files.
+- `git diff --cached --check` passed; no environment, secret, migration,
+  database, DNS, or deployment configuration files were staged.
+- Normal push result: PASS — `488baa7..5f2776b master -> master`.
+- Remote verification: PASS — `origin/master` resolves to
+  `5f2776bac57f2a029bd9d1aebc2b1f85ffcaa8dc`.
+- Deployment status: **UNVERIFIED**. No Vercel project linkage, GitHub Actions
+  workflow, or accessible hosting dashboard was present in the repository.
+  Unauthenticated GitHub workflow/deployment API checks returned 404, so no
+  deployment result can be established from available access.
+- Public smoke check: **BLOCKED** in this environment; requests to
+  `https://www.cpilancers.com/` failed before an HTTP response was available.
+
+No production account, database record, secret, environment variable, DNS
+entry, SQL migration, authentication policy, or administrator permission was
+changed. Browser registration verification remains `REVIEW_REQUIRED`.
+
 ## 2026-10-16 — Second-Pass Security Challenge, Adversarial Testing & Remediation
 
 Conducted an independent adversarial challenge of earlier security claims and the search sanitization patch, re-audited all authorization boundaries, and hardened data exposure controls.
