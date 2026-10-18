@@ -1520,3 +1520,13 @@ This section supersedes earlier draft statements that described these routes as 
 - Local Playwright public-page run was attempted against the configured loopback URL and all 9 tests were blocked by `ERR_CONNECTION_REFUSED` because no local server was running. No production browser test or production registration attempt was made.
 
 Status before publication: **REVIEW_REQUIRED** pending the normal push and deployment checks, and pending authorized production browser verification with a legitimate test account and approved procedure.
+
+## 2026-10-18 - Publication and Deployment Result
+
+- Commit `931d07912cb77a900f4dfb00f3bafe34c2a6e5f7` was pushed from `master` to `origin/master` with a normal non-force push. `git ls-remote origin refs/heads/master` returned the same exact hash.
+- The Vercel CLI reported `Logged out`; no local Vercel project link or authenticated hosting dashboard was available. Unauthenticated GitHub status/check/deployment lookups returned 404, so no provider deployment ID or provider-level success record could be retrieved.
+- Immediately after the push, the six new routes still returned 404. After a short propagation interval, `/terms`, `/privacy`, `/pricing`, `/how-it-works`, `/certifications`, and `/verify-email` returned HTTP 200 and served their expected reviewed content. This is public evidence that the pushed change reached the live site, but the hosting provider's exact deployment record remains unavailable.
+- Safe public smoke checks passed for the reviewed page markers, manifest and icon assets. `GET /api/auth/me` returned 401 as expected. No production registration request, account creation, database mutation, SQL/migration, secret change, or authentication-policy change was performed.
+
+Publication status: **PUBLISHED; PUBLIC SMOKE PASS**.
+Registration end-to-end status: **REVIEW_REQUIRED** pending a legitimate authorized production test account and approved browser procedure.
