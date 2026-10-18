@@ -1530,3 +1530,36 @@ Status before publication: **REVIEW_REQUIRED** pending the normal push and deplo
 
 Publication status: **PUBLISHED; PUBLIC SMOKE PASS**.
 Registration end-to-end status: **REVIEW_REQUIRED** pending a legitimate authorized production test account and approved browser procedure.
+
+## 2026-10-18 - Production Log Correlation and Privileged Header Fix
+
+### Confirmed production evidence
+
+The supplied Supabase dashboard evidence for approximately 12:44-12:45 local time records two PostgreSQL `42501` permission errors, `GET /rest/v1/users` 401, `POST /auth/v1/signup` 200, `POST /rest/v1/users` 401, and `DELETE /auth/v1/admin/users/{user-id}` 401 with `This endpoint requires a valid Bearer token`. The evidence states that these events have not been conclusively correlated to one request; this report preserves that limitation.
+
+### Root cause
+
+The previously published `src/lib/supabase/admin.ts` supplied a global fetch wrapper that deleted `Authorization: Bearer ${secretKey}` whenever it matched the configured privileged key. That header is required by Supabase Auth Admin operations such as `auth.admin.deleteUser`. The wrapper therefore directly explains the observed Admin DELETE 401. Because the same wrapper applied to REST calls, it also removed the privileged authorization from `public.users` requests, which is consistent with the observed REST 401 and PostgreSQL `42501` permission failures. The successful Auth signup 200 shows that Auth user creation itself completed before the downstream failure. The log timestamps support this mechanism, but do not independently prove that every listed event belonged to one registration request.
+
+### Fix and security review
+
+- Removed the global header-stripping fetch override from `src/lib/supabase/admin.ts`; the official Supabase client now retains the authorization headers needed by both privileged REST and Auth Admin calls.
+- Added `src/tests/supabase-admin-client.test.ts` to assert that the admin client is server-configured, rejects missing privileged configuration, and does not install a fetch override that can strip authorization.
+- Added a `42501` permission-failure registration regression case to `src/tests/auth-service-register.test.ts`.
+- Existing registration tests continue to cover duplicate preflight, enumeration-safe signup, unique-key races, profile insertion failure, independent cleanup attempts, and cleanup errors that must not replace the original failure.
+- No RLS policy, anonymous grant, production secret, environment variable, database record, SQL migration, or authentication setting was changed.
+
+### Historical Supabase access assessment
+
+- `.env.local` points to `uzjvaijepqfiogwncdjn.supabase.co`; `.env.production` contains a placeholder host. The available files do not establish whether that shared project was production, staging, or development.
+- Historical reports and scripts show that prior diagnostics could query limited user data and use `auth.admin.listUsers()`, and that QA scripts could create and delete temporary users. The accessible report output contains counts rather than user records, but it is not an audit log; this review cannot support the stronger claim that no personal data was ever accessed internally. No credentials, tokens, emails, or account records were printed here, and no enumeration or remote mutation was performed during this review.
+
+### Final verification for this fix
+
+- `npx tsc --noEmit`: passed, exit code 0.
+- `npx eslint . --max-warnings=0`: passed, exit code 0.
+- `npm test -- --run`: passed, 43 files and 940 tests, 0 failures.
+- `npm run build`: passed, 54 routes generated. The existing package-lock-outside-repository warning remains non-blocking.
+- `npx playwright test --list`: passed discovery, 20 tests in 10 files. The relevant public local suite attempted 9 tests and was blocked by `ERR_CONNECTION_REFUSED` because no isolated local server was running.
+
+Production registration remains `REVIEW_REQUIRED` because no authorized production account or registration request was created.

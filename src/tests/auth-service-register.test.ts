@@ -108,6 +108,15 @@ describe('AuthService.register duplicate and failure handling', () => {
     });
   });
 
+  it('maps a users permission failure to the controlled registration-unavailable response', async () => {
+    setup({ existingUserError: { code: '42501', message: 'permission denied for table users' } });
+
+    await expect(AuthService.register(params)).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'AUTH_REGISTRATION_UNAVAILABLE',
+    });
+  });
+
   it('returns a controlled 503 when the admin client is not configured', async () => {
     mocks.createAdminClient.mockImplementation(() => {
       throw new Error('Missing Supabase secret key or URL for admin client.');

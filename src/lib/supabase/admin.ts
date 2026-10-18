@@ -9,21 +9,7 @@ export function createAdminClient() {
     throw new Error('Missing Supabase secret key or URL for admin client.');
   }
 
-  // New sb_secret_* keys are opaque API keys, not JWTs. The supabase-js
-  // fallback adds the project key as Authorization: Bearer when no user
-  // token exists, so remove only that synthetic header and keep `apikey`.
-  const apiKeyOnlyFetch: typeof fetch = async (input, init) => {
-    const headers = new Headers(init?.headers);
-    if (headers.get('authorization') === `Bearer ${secretKey}`) {
-      headers.delete('authorization');
-    }
-    return fetch(input, { ...init, headers });
-  };
-
   return createClient(supabaseUrl, secretKey, {
-    global: {
-      fetch: apiKeyOnlyFetch,
-    },
     auth: {
       autoRefreshToken: false,
       persistSession: false,
