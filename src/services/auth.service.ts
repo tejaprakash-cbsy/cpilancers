@@ -26,9 +26,25 @@ export interface LoginParams {
   password: string;
 }
 
-function getAppUrl(): string {
+export function getAppUrl(): string {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
   if (configured) return configured.replace(/\/+$/, '');
+
+  // Vercel sets NODE_ENV="production" for both production and preview deployments.
+  // Use VERCEL_ENV to differentiate: only real production requires NEXT_PUBLIC_APP_URL to be set.
+  // In Vercel preview (VERCEL_ENV === 'preview') or development, fall back to Vercel URLs or localhost.
+  const isProduction =
+    process.env.VERCEL_ENV === 'production' ||
+    (process.env.NODE_ENV === 'production' && !process.env.VERCEL_ENV);
+
+  if (isProduction) {
+    throw new AppError(
+      'NEXT_PUBLIC_APP_URL must be configured in production environment',
+      500,
+      'APP_URL_NOT_CONFIGURED'
+    );
+  }
+
   if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
     return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
   }
@@ -117,7 +133,7 @@ export class AuthService {
         email: normalizedEmail,
         password: params.password,
         options: {
-          emailRedirectTo: `${getAppUrl()}/auth/callback`,
+          emailRedirectTo: `${getAppUrl()}/api/auth/callback`,
           data: {
             role: params.role,
             first_name: params.firstName,
@@ -368,20 +384,21 @@ export class AuthService {
         type: 'signup',
         email: email.toLowerCase(),
         options: {
-          emailRedirectTo: `${getAppUrl()}/auth/callback`,
+          emailRedirectTo: `${getAppUrl()}/api/auth/callback`,
         },
       });
 
       if (error) {
-        console.error('[Auth Error - Resend Verification]:', error);
-        throw new AppError('Failed to resend verification email', 400);
+        // Log error internally for monitoring without leaking account existence to clients
+        console.error('[Auth Error - Resend Verification]:', error.message || error);
       }
 
+      // Always return success to prevent user enumeration
       return { success: true };
     } catch (error) {
-      if (error instanceof AppError) throw error;
       console.error('[AuthService.resendVerificationEmail]:', error);
-      throw new AppError('Failed to resend verification email', 500);
+      // Fail neutral: always return success to caller
+      return { success: true };
     }
   }
 }

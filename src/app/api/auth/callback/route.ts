@@ -105,6 +105,11 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Redirect to error page or login if token is invalid
-  return NextResponse.redirect(new URL('/auth/auth-error?message=Invalid or expired link', request.url));
+  // Redirect to error page if token is invalid
+  const errorUrl = new URL('/auth-error', request.url);
+  errorUrl.searchParams.set('message', 'Invalid or expired link');
+  if (type) {
+    errorUrl.searchParams.set('type', type);
+  }
+  return NextResponse.redirect(errorUrl);
 }

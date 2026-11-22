@@ -144,6 +144,26 @@ describe('protected routes in proxy.ts', () => {
     }
   });
 
+  it('rejects a POST to the login route with hostile Origin https://evil.example with 403', async () => {
+    process.env.NEXT_PUBLIC_APP_URL = 'http://localhost:3000';
+    const req = new NextRequest('http://localhost:3000/api/auth/login', {
+      method: 'POST',
+      headers: {
+        origin: 'https://evil.example',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ email: 'test@example.com', password: 'password' }),
+    });
+
+    const res = await proxy(req);
+
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { success: boolean; error: { code: string; message: string } };
+    expect(body.success).toBe(false);
+    expect(body.error.code).toBe('FORBIDDEN');
+    expect(body.error.message).toBe('Cross-origin request blocked.');
+  });
+
   it('does not treat a public job detail page as protected', async () => {
     // `/jobs/<id>` is public; only `/jobs/create` and `/jobs/<id>/(edit|proposals)`
     // need a session. A too-broad pattern locks anonymous visitors out of the

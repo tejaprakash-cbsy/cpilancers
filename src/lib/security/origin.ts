@@ -49,12 +49,27 @@ export function trustedOrigin(): string | null {
   }
 }
 
+let hasLoggedAllowedOriginsWarning = false;
+
+function logMalformedAllowedOriginOnce(): void {
+  if (!hasLoggedAllowedOriginsWarning) {
+    console.warn(
+      '[Security] Malformed entry or wildcard pattern rejected in ALLOWED_ORIGINS configuration.'
+    );
+    hasLoggedAllowedOriginsWarning = true;
+  }
+}
+
 /**
  * Collect all configured trusted origins from server configuration and deployment environment.
  * Supports:
  * - NEXT_PUBLIC_APP_URL (single or comma-separated)
- * - ALLOWED_ORIGINS (comma-separated)
- * - Vercel system environment variables (VERCEL_PROJECT_PRODUCTION_URL, VERCEL_URL, VERCEL_BRANCH_URL, NEXT_PUBLIC_VERCEL_URL)
+ * - ALLOWED_ORIGINS (comma-separated) — expected format: "https://cpilancers.com,https://www.cpilancers.com"
+ *   Each entry must be a valid URL with scheme (http:// or https://). Only the origin (scheme+host+port)
+ *   is used for comparison. Wildcards (e.g. *.vercel.app) and malformed entries are strictly rejected (fail-closed).
+ * - Vercel canonical production project URL (VERCEL_PROJECT_PRODUCTION_URL).
+ *   NOTE: No value derived from VERCEL_URL, VERCEL_BRANCH_URL, or preview deployments is ever added
+ *   to trusted origins to ensure preview deployments do not widen the allowlist.
  */
 export function getTrustedOrigins(): Set<string> {
   const origins = new Set<string>();
@@ -63,47 +78,63 @@ export function getTrustedOrigins(): Set<string> {
   const appUrls = process.env.NEXT_PUBLIC_APP_URL?.split(',') ?? [];
   for (const raw of appUrls) {
     const trimmed = raw.trim();
-    if (trimmed) {
+    if (trimmed && !trimmed.includes('*')) {
       try {
-        origins.add(new URL(trimmed).origin);
+        const parsed = new URL(trimmed);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+          origins.add(parsed.origin);
+        }
       } catch {
         // ignore malformed entries
       }
     }
   }
 
-  // 2. ALLOWED_ORIGINS (comma-separated)
+  // 2. ALLOWED_ORIGINS (comma-separated, fail-closed against wildcards & malformed entries)
   const allowed = process.env.ALLOWED_ORIGINS?.split(',') ?? [];
   for (const raw of allowed) {
     const trimmed = raw.trim();
-    if (trimmed) {
-      try {
-        origins.add(new URL(trimmed).origin);
-      } catch {
-        // ignore malformed entries
+    if (!trimmed) continue;
+
+    // Strictly reject wildcards (fail closed, log once without leaking values)
+    if (trimmed.includes('*')) {
+      logMalformedAllowedOriginOnce();
+      continue;
+    }
+
+    try {
+      const parsed = new URL(trimmed);
+      if (
+        (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+        !parsed.hostname ||
+        parsed.hostname.includes('*')
+      ) {
+        logMalformedAllowedOriginOnce();
+        continue;
       }
+      origins.add(parsed.origin);
+    } catch {
+      logMalformedAllowedOriginOnce();
+      continue;
     }
   }
 
-  // 3. Vercel deployment URLs (automatically injected by Vercel platform)
-  const vercelUrls = [
-    process.env.VERCEL_PROJECT_PRODUCTION_URL,
-    process.env.VERCEL_URL,
-    process.env.VERCEL_BRANCH_URL,
-    process.env.NEXT_PUBLIC_VERCEL_URL,
-  ];
-
-  for (const raw of vercelUrls) {
-    const trimmed = raw?.trim();
-    if (trimmed) {
-      const formatted = trimmed.startsWith('http://') || trimmed.startsWith('https://')
-        ? trimmed
-        : `https://${trimmed}`;
-      try {
-        origins.add(new URL(formatted).origin);
-      } catch {
-        // ignore malformed entries
+  // 3. Vercel canonical production project URL only.
+  // VERCEL_URL, VERCEL_BRANCH_URL, and preview deployment URLs are deliberately excluded
+  // so preview environments never widen the trusted origins allowlist.
+  const vercelProdUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  if (vercelProdUrl && !vercelProdUrl.includes('*')) {
+    const formatted =
+      vercelProdUrl.startsWith('http://') || vercelProdUrl.startsWith('https://')
+        ? vercelProdUrl
+        : `https://${vercelProdUrl}`;
+    try {
+      const parsed = new URL(formatted);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        origins.add(parsed.origin);
       }
+    } catch {
+      // ignore malformed entries
     }
   }
 

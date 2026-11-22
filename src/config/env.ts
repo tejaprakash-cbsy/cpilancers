@@ -110,6 +110,14 @@ function validateEnv(): Env {
     // Server-only. A suppression group id is account-scoped configuration, not a
     // browser-facing value, so it is deliberately absent from `clientEnv`.
     SENDGRID_ASM_GROUP_ID: process.env.SENDGRID_ASM_GROUP_ID,
+    // Server-side NEXT_PUBLIC_APP_URL with Vercel fallback matching client behavior
+    NEXT_PUBLIC_APP_URL:
+      process.env.NEXT_PUBLIC_APP_URL ||
+      (process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : 'http://localhost:3000'),
   };
 
   const parsed = envSchema.safeParse(serverEnv);

@@ -199,7 +199,8 @@ describe('RS-01 GET /api/auth/callback — end-to-end redirect behaviour', () =>
     // would land on /dashboard instead of the error page.
     mockVerifyOtp.mockResolvedValue({ error: new Error('invalid token') });
     const res = await GET(request({ next: '/dashboard', type: 'email', token_hash: 'bad' }));
-    expect(locationOf(res)).toContain('/auth/auth-error');
+    expect(locationOf(res)).toContain('/auth-error');
+    expect(locationOf(res)).not.toContain('/auth/auth-error');
     expect(mockGetUser).not.toHaveBeenCalled();
   });
 
@@ -221,5 +222,15 @@ describe('RS-01 GET /api/auth/callback — end-to-end redirect behaviour', () =>
   it('11. still marks the email verified on the success path', async () => {
     await GET(request({ next: '/dashboard', type: 'email', token_hash: 'good' }));
     expect(mockUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('12. redirects to the real public URL /auth-error without the (auth) route group prefix', async () => {
+    mockVerifyOtp.mockResolvedValue({ error: new Error('expired token') });
+    const res = await GET(request({ type: 'email', token_hash: 'expired' }));
+    const location = locationOf(res);
+    const parsed = new URL(location);
+    expect(parsed.pathname).toBe('/auth-error');
+    expect(parsed.searchParams.get('message')).toBe('Invalid or expired link');
+    expect(parsed.searchParams.get('type')).toBe('email');
   });
 });
