@@ -3,7 +3,8 @@ import { AuthService } from '@/services/auth.service';
 import { PaymentService } from '@/services/payment.service';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { connectOnboardingSchema } from '@/lib/validations/payment.schemas';
-import { formatErrorResponse, AppError } from '@/lib/errors';
+import { formatErrorResponse, AppError, PaymentsUnavailableError } from '@/lib/errors';
+import { getPaymentProvider } from '@/lib/payments/razorpay.provider';
 
 /**
  * Consultant payout onboarding (Razorpay Route linked account).
@@ -14,6 +15,7 @@ import { formatErrorResponse, AppError } from '@/lib/errors';
  */
 export async function POST(request: NextRequest) {
   try {
+    getPaymentProvider();
     const user = await AuthService.getCurrentUser();
     if (!user) {
       return NextResponse.json(
@@ -93,6 +95,12 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
+    if (error instanceof PaymentsUnavailableError) {
+      return NextResponse.json(
+        { error: { code: 'PAYMENTS_UNAVAILABLE', message: 'Payments are not available yet.' } },
+        { status: 503 }
+      );
+    }
     const formatted = formatErrorResponse(error);
     return NextResponse.json(formatted, { status: formatted.statusCode });
   }
@@ -107,6 +115,7 @@ export async function POST(request: NextRequest) {
  */
 export async function GET() {
   try {
+    getPaymentProvider();
     const user = await AuthService.getCurrentUser();
     if (!user) {
       return NextResponse.json(
@@ -123,6 +132,12 @@ export async function GET() {
 
     return NextResponse.json({ success: true, data: await PaymentService.getConnectStatus(user.id) });
   } catch (error) {
+    if (error instanceof PaymentsUnavailableError) {
+      return NextResponse.json(
+        { error: { code: 'PAYMENTS_UNAVAILABLE', message: 'Payments are not available yet.' } },
+        { status: 503 }
+      );
+    }
     const formatted = formatErrorResponse(error);
     return NextResponse.json(formatted, { status: formatted.statusCode });
   }

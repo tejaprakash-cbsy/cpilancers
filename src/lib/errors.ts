@@ -54,6 +54,13 @@ export class ConflictError extends AppError {
   }
 }
 
+export class PaymentsUnavailableError extends AppError {
+  constructor(message: string = 'Payments are not available yet.') {
+    super(message, 503, 'PAYMENTS_UNAVAILABLE');
+    this.name = 'PaymentsUnavailableError';
+  }
+}
+
 /**
  * Field-level shape for a single Zod validation issue.
  *
@@ -98,6 +105,7 @@ const PUBLIC_MESSAGES: Record<string, string> = {
   NOT_FOUND: 'Resource not found.',
   VALIDATION_ERROR: 'Validation failed.',
   CONFLICT: 'Resource state conflict.',
+  PAYMENTS_UNAVAILABLE: 'Payments are not available yet.',
 };
 
 function safeDetails(details: unknown): ValidationIssueDetail[] | undefined {
@@ -118,6 +126,17 @@ function safeDetails(details: unknown): ValidationIssueDetail[] | undefined {
 export function formatErrorResponse(error: unknown, correlationId?: string) {
   const requestId = correlationId;
   if (error instanceof AppError) {
+    if (error instanceof PaymentsUnavailableError || error.code === 'PAYMENTS_UNAVAILABLE') {
+      return {
+        success: false,
+        error: {
+          code: 'PAYMENTS_UNAVAILABLE',
+          message: error.message || 'Payments are not available yet.',
+          ...(requestId ? { correlationId: requestId } : {}),
+        },
+        statusCode: 503,
+      };
+    }
     const message = error.statusCode >= 500
       ? 'Request could not be completed.'
       : error.code === 'NOT_FOUND'

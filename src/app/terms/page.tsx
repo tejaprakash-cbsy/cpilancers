@@ -65,7 +65,7 @@ export default function TermsPage() {
             <div className="mt-3">
               <a
                 href="mailto:support@cpilancers.com"
-                className="inline-flex items-center gap-2 text-[#0a4d8c] font-medium hover:underline"
+                className="inline-flex items-center gap-2 text-[#365cf5] hover:text-[#2445c7] font-medium hover:underline"
               >
                 <Mail className="w-4 h-4" />
                 support@cpilancers.com

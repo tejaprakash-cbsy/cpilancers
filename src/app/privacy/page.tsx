@@ -51,6 +51,9 @@ export default function PrivacyPage() {
               architectures. The final policy will describe applicable security controls, data use,
               retention, and third-party disclosures after corporate approval.
             </p>
+            <p className="mt-3">
+              We use Vercel Web Analytics to count page views. It does not use cookies to identify visitors.
+            </p>
           </section>
 
           <section>
@@ -64,7 +67,7 @@ export default function PrivacyPage() {
             <div className="mt-3">
               <a
                 href="mailto:privacy@cpilancers.com"
-                className="inline-flex items-center gap-2 text-[#0a4d8c] font-medium hover:underline"
+                className="inline-flex items-center gap-2 text-[#365cf5] hover:text-[#2445c7] font-medium hover:underline"
               >
                 <Mail className="w-4 h-4" />
                 privacy@cpilancers.com

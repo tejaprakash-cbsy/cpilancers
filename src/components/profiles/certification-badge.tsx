@@ -1,3 +1,4 @@
+import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface CertificationBadgeProps {
@@ -11,7 +12,7 @@ export default function CertificationBadge({ certification, consultantCertificat
   return <div className={cn('inline-flex items-center gap-2 rounded border bg-white px-3 py-2', size === 'sm' ? 'text-xs' : 'text-sm', className)}>
     <span className="font-medium">{certification.name}{certification.code ? ` (${certification.code})` : ''}</span>
     <span className="text-gray-500">{certification.issuing_authority}</span>
-    {consultantCertification?.verification_status === 'verified' && <span className="text-green-600" aria-label="Verified">✓</span>}
+    {consultantCertification?.verification_status === 'verified' && <Check className="h-3.5 w-3.5 text-green-600 inline" aria-label="Verified" />}
   </div>;
 }
 

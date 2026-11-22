@@ -121,11 +121,11 @@ export default function RegisterPage() {
                   onClick={() => handleChange('role', 'client')}
                   className={`p-4 rounded-lg border-2 transition-all text-left ${
                     formData.role === 'client'
-                      ? 'border-[#0a4d8c] bg-blue-50'
+                      ? 'border-[#365cf5] bg-[#eef1ff]/40'
                       : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  <Briefcase className="w-6 h-6 text-[#0a4d8c] mb-2" />
+                  <Briefcase className="w-6 h-6 text-[#365cf5] mb-2" />
                   <div className="font-semibold text-slate-900">Hire Consultants</div>
                   <div className="text-xs text-slate-600">Post integration projects</div>
                 </button>
@@ -135,11 +135,11 @@ export default function RegisterPage() {
                   onClick={() => handleChange('role', 'consultant')}
                   className={`p-4 rounded-lg border-2 transition-all text-left ${
                     formData.role === 'consultant'
-                      ? 'border-[#0a4d8c] bg-blue-50'
+                      ? 'border-[#365cf5] bg-[#eef1ff]/40'
                       : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  <Users className="w-6 h-6 text-[#0a4d8c] mb-2" />
+                  <Users className="w-6 h-6 text-[#365cf5] mb-2" />
                   <div className="font-semibold text-slate-900">Find Work</div>
                   <div className="text-xs text-slate-600">Offer SAP CPI expertise</div>
                 </button>
@@ -214,11 +214,11 @@ export default function RegisterPage() {
               />
               <label htmlFor="terms" className="text-sm text-slate-600">
                 I agree to the{' '}
-                <Link href="/terms" className="text-[#0a4d8c] hover:underline">
+                <Link href="/terms" className="text-[#365cf5] hover:text-[#2445c7] hover:underline">
                   Terms of Service
                 </Link>{' '}
                 and{' '}
-                <Link href="/privacy" className="text-[#0a4d8c] hover:underline">
+                <Link href="/privacy" className="text-[#365cf5] hover:text-[#2445c7] hover:underline">
                   Privacy Policy
                 </Link>
               </label>
@@ -242,7 +242,7 @@ export default function RegisterPage() {
             {/* Login Link */}
             <p className="text-center text-sm text-slate-600">
               Already have an account?{' '}
-              <Link href="/login" className="text-[#0a4d8c] font-medium hover:underline">
+              <Link href="/login" className="text-[#365cf5] font-medium hover:text-[#2445c7] hover:underline">
                 Sign in
               </Link>
             </p>

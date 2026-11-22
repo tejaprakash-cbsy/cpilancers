@@ -277,6 +277,7 @@ export class PaymentService extends BaseService {
     clientUserId: string,
     milestoneId: string
   ): Promise<CreatePaymentResult> {
+    const provider = this.provider();
     const db = createAdminClient();
 
     const { data: milestone, error: milestoneError } = await db
@@ -376,7 +377,7 @@ export class PaymentService extends BaseService {
         platform_fee_cents: fees.platform_fee_cents,
         net_amount_cents: fees.net_amount_cents,
         currency: RAZORPAY_CURRENCY,
-        provider: this.provider().name,
+        provider: provider.name,
         status: 'pending',
       })
       .select('*')
@@ -387,7 +388,7 @@ export class PaymentService extends BaseService {
 
     let order;
     try {
-      order = await this.provider().createOrder({
+      order = await provider.createOrder({
         amountCents: fees.gross_amount_cents,
         currency: RAZORPAY_CURRENCY,
         // Razorpay enforces uniqueness on `receipt`, which is the idempotency

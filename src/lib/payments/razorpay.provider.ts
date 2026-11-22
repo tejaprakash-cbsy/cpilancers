@@ -20,7 +20,7 @@ import type { Orders } from 'razorpay/dist/types/orders';
 import type { Payments } from 'razorpay/dist/types/payments';
 import type { Refunds } from 'razorpay/dist/types/refunds';
 import type { Transfers } from 'razorpay/dist/types/transfers';
-import { AppError } from '@/lib/errors';
+import { AppError, PaymentsUnavailableError } from '@/lib/errors';
 import type {
   CapturePaymentInput,
   CreateConnectedAccountInput,
@@ -40,6 +40,7 @@ import type {
 } from './provider';
 
 export const RAZORPAY_CURRENCY = 'INR';
+export { PaymentsUnavailableError };
 
 /**
  * Razorpay's SDK declares response objects as the request type plus a handful of
@@ -86,10 +87,8 @@ let client: Razorpay | null = null;
 function secret(name: 'RAZORPAY_KEY_ID' | 'RAZORPAY_KEY_SECRET'): string {
   const value = process.env[name];
   if (!value) {
-    throw new AppError(
-      `Payment provider is not configured: ${name} is missing.`,
-      503,
-      'PAYMENT_PROVIDER_UNAVAILABLE'
+    throw new PaymentsUnavailableError(
+      `Payment provider is not configured: ${name} is missing.`
     );
   }
   return value;
@@ -501,13 +500,34 @@ let provider: PaymentProvider | null = null;
 
 import { MockPaymentProvider } from './mock.provider';
 
+export function resetPaymentProvider(): void {
+  provider = null;
+  client = null;
+}
+
 export function getPaymentProvider(): PaymentProvider {
-  if (!provider) {
-    if (process.env.USE_MOCK_PAYMENT === 'true' || !process.env.RAZORPAY_KEY_ID) {
-      provider = new MockPaymentProvider();
-    } else {
-      provider = new RazorpayRouteProvider();
+  if (provider) return provider;
+
+  const isProduction =
+    process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+
+  if (isProduction) {
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      throw new PaymentsUnavailableError('Payments are not available yet.');
     }
+    provider = new RazorpayRouteProvider();
+    return provider;
   }
+
+  if (process.env.USE_MOCK_PAYMENT === 'true') {
+    provider = new MockPaymentProvider();
+    return provider;
+  }
+
+  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+    throw new PaymentsUnavailableError('Payments are not available yet.');
+  }
+
+  provider = new RazorpayRouteProvider();
   return provider;
 }

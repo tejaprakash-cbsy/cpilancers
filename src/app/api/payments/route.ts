@@ -6,10 +6,12 @@ import {
   paymentFilterSchema,
   FORBIDDEN_PAYMENT_INPUT_KEYS,
 } from '@/lib/validations/payment.schemas';
-import { formatErrorResponse, ValidationError } from '@/lib/errors';
+import { formatErrorResponse, ValidationError, PaymentsUnavailableError } from '@/lib/errors';
+import { getPaymentProvider } from '@/lib/payments/razorpay.provider';
 
 export async function GET(request: NextRequest) {
   try {
+    getPaymentProvider();
     const user = await AuthService.getCurrentUser();
     if (!user) {
       return NextResponse.json(
@@ -34,6 +36,12 @@ export async function GET(request: NextRequest) {
       }),
     });
   } catch (error) {
+    if (error instanceof PaymentsUnavailableError) {
+      return NextResponse.json(
+        { error: { code: 'PAYMENTS_UNAVAILABLE', message: 'Payments are not available yet.' } },
+        { status: 503 }
+      );
+    }
     const formatted = formatErrorResponse(error);
     return NextResponse.json(formatted, { status: formatted.statusCode });
   }
@@ -49,6 +57,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    getPaymentProvider();
     const user = await AuthService.getCurrentUser();
     if (!user) {
       return NextResponse.json(
@@ -91,6 +100,12 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
+    if (error instanceof PaymentsUnavailableError) {
+      return NextResponse.json(
+        { error: { code: 'PAYMENTS_UNAVAILABLE', message: 'Payments are not available yet.' } },
+        { status: 503 }
+      );
+    }
     const formatted = formatErrorResponse(error);
     return NextResponse.json(formatted, { status: formatted.statusCode });
   }

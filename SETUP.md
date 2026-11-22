@@ -205,8 +205,8 @@ This document provides a complete overview of all files created, their purposes,
 | `src/app/globals.css` | Global styles with Tailwind directives and design tokens |
 
 **Design Tokens:**
-- Primary: Deep Navy Blue (#0a4d8c)
-- Secondary: SAP Accent Cyan (#0284c7)
+- Primary: Royal Blue (#365cf5)
+- Secondary: Royal Blue Dark (#2445c7)
 - Success, warning, danger states
 - Custom badge styles (.sap-badge-cpi, .sap-badge-s4, etc.)
 

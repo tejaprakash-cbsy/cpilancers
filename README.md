@@ -205,8 +205,9 @@ sap-integration-marketplace/
 
 The application uses a professional SAP enterprise color scheme:
 
-- **Primary (Navy Blue):** `#0a4d8c` - Main CTA buttons, headers
-- **Secondary (Cyan):** `#0284c7` - Accents, secondary actions
+- **Primary (Royal Blue):** `#365CF5` - Main CTA buttons, active accents
+- **Hover / Dark Accent:** `#2445C7` - Button hover, active focus states
+- **Light Accent:** `#EEF1FF` - Icon badges, subtle containers
 - **Success:** `#10b981` - Positive states, approvals
 - **Warning:** `#f59e0b` - Warnings, pending states
 - **Danger:** `#ef4444` - Errors, destructive actions

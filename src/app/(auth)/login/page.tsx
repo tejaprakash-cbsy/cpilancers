@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardDescription } from '@/components/ui/card';
 import { LogIn, Mail } from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
 import { resolvePostLoginPath } from '@/lib/auth/role-redirects';
@@ -160,7 +160,7 @@ return (
           <div className="mb-4 flex items-center justify-center">
             <Logo size={44} />
           </div>
-          <CardTitle className="text-2xl">Welcome back</CardTitle>
+          <h1 className="text-2xl font-medium leading-normal text-[#172033]">Welcome back</h1>
           <CardDescription>Sign in to your Lancers account</CardDescription>
         </CardHeader>
 
@@ -207,7 +207,7 @@ return (
                 type="button"
                 onClick={handleForgotPassword}
                 disabled={isLoading}
-                className="text-xs font-medium text-[#0a4d8c] hover:underline disabled:opacity-50"
+                className="text-xs font-medium text-[#365cf5] hover:text-[#2445c7] hover:underline disabled:opacity-50"
               >
                 Forgot password?
               </button>
@@ -226,7 +226,7 @@ return (
 
             <p className="text-center text-sm text-slate-600">
               Don&apos;t have an account?{' '}
-              <Link href="/register" className="text-[#0a4d8c] font-medium hover:underline">
+              <Link href="/register" className="text-[#365cf5] font-medium hover:text-[#2445c7] hover:underline">
                 Create one
               </Link>
             </p>

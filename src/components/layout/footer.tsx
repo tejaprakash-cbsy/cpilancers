@@ -21,59 +21,54 @@ export const Footer: React.FC = () => {
             </div>
           </div>
 
-          {/* For Clients */}
+          {/* Community */}
           <div>
             <h4 className="font-semibold text-slate-900 mb-3 text-xs uppercase tracking-wider">
-              For Clients
+              Community
             </h4>
             <ul className="space-y-2 text-xs">
               <li>
-                <Link href="/consultants" className="hover:text-slate-900 transition-colors">
-                  Browse SAP CPI Consultants
+                <Link href="/forum" className="hover:text-slate-900 transition-colors">
+                  Forum
                 </Link>
               </li>
               <li>
-                <Link href="/jobs/create" className="hover:text-slate-900 transition-colors">
-                  Post an Integration Requirement
+                <Link href="/consultants" className="hover:text-slate-900 transition-colors">
+                  Consultants
+                </Link>
+              </li>
+              <li>
+                <Link href="/jobs" className="hover:text-slate-900 transition-colors">
+                  Jobs (Early Access)
                 </Link>
               </li>
               <li>
                 <Link href="/how-it-works" className="hover:text-slate-900 transition-colors">
-                  Escrow & Milestone Protection
-                </Link>
-              </li>
-              <li>
-                <Link href="/pricing" className="hover:text-slate-900 transition-colors">
-                  Transparent Pricing
+                  How It Works
                 </Link>
               </li>
             </ul>
           </div>
 
-          {/* For Consultants */}
+          {/* Legal */}
           <div>
             <h4 className="font-semibold text-slate-900 mb-3 text-xs uppercase tracking-wider">
-              For Consultants
+              Legal
             </h4>
             <ul className="space-y-2 text-xs">
               <li>
-                <Link href="/jobs" className="hover:text-slate-900 transition-colors">
-                  Browse Open Integration Jobs
+                <Link href="/terms" className="hover:text-slate-900 transition-colors">
+                  Terms of Service
                 </Link>
               </li>
               <li>
-                <Link href="/register" className="hover:text-slate-900 transition-colors">
-                  Create Consultant Profile
+                <Link href="/privacy" className="hover:text-slate-900 transition-colors">
+                  Privacy Policy
                 </Link>
               </li>
               <li>
-                <Link href="/certifications" className="hover:text-slate-900 transition-colors">
-                  SAP Certification Verification
-                </Link>
-              </li>
-              <li>
-                <Link href="/how-it-works" className="hover:text-slate-900 transition-colors">
-                  Direct Payouts & Low Fees
+                <Link href="/contact" className="hover:text-slate-900 transition-colors">
+                  Contact
                 </Link>
               </li>
             </ul>

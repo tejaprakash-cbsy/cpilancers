@@ -8,6 +8,7 @@ import {
   Send,
   Layers,
   ArrowRight,
+  AlertCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -83,6 +84,19 @@ export default function HowItWorksPage() {
   return (
     <div className="min-h-screen bg-slate-50 py-16 px-4 sm:px-6 lg:px-8">
       <div className="max-w-5xl mx-auto">
+        {/* Payment Notice */}
+        <div className="mb-8 bg-amber-50/80 rounded-xl p-5 border border-amber-200 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-900 leading-relaxed space-y-1">
+            <p className="font-semibold">Payments & Escrow Not Yet Available</p>
+            <p>
+              The marketplace payment features described below (escrow, milestone funding, payouts)
+              are not yet live. They will launch in a later phase. Currently, CPI Lancers operates as
+              a free community forum with job browsing and consultant profiles in early access.
+            </p>
+          </div>
+        </div>
+
         {/* Header */}
         <div className="text-center max-w-2xl mx-auto mb-16">
           <h1 className="text-4xl font-bold text-slate-900 tracking-tight">

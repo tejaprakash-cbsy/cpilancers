@@ -89,7 +89,7 @@ export default function CertificationsPage() {
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
             <a
               href="mailto:support@cpilancers.com"
-              className="inline-flex items-center gap-1.5 text-xs text-[#0a4d8c] font-medium hover:underline"
+              className="inline-flex items-center gap-1.5 text-xs text-[#365cf5] hover:text-[#2445c7] font-medium hover:underline"
             >
               <Mail className="w-3.5 h-3.5" />
               support@cpilancers.com

@@ -4,8 +4,6 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Header } from '@/components/layout/header';
-import { Footer } from '@/components/layout/footer';
 import { ClientProfileService as ProfileService } from '@/services/client-api.service';
 import { ProfileCard } from '@/components/profiles/profile-card';
 import { cn } from '@/lib/utils';
@@ -84,74 +82,60 @@ export default function ClientPublicProfilePage() {
 
   if (loading) {
     return (
-      <>
-        <Header />
-        <main className="min-h-[calc(100vh-14rem)] py-8">
-          <div className="max-w-4xl mx-auto">
-            <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-              <p className="ml-4 text-lg">Loading profile...</p>
-            </div>
+      <main className="min-h-[calc(100vh-14rem)] py-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+            <p className="ml-4 text-lg">Loading profile...</p>
           </div>
-        </main>
-        <Footer />
-      </>
+        </div>
+      </main>
     );
   }
 
   if (error) {
     return (
-      <>
-        <Header />
-        <main className="min-h-[calc(100vh-14rem)] py-8">
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-6 text-center">
-              <h3 className="text-lg font-medium mb-4">{error}</h3>
-              <p className="text-gray-600">
-                The client profile you&rsquo;re looking for may not exist or is no longer available.
-              </p>
-              <div className="mt-6">
-                {/* Was a raw <a href="/">, which triggers a full document
-                    navigation and discards the client-side router. */}
-                <Link
-                  href="/"
-                  className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200"
-                >
-                  Go to Homepage
-                </Link>
-              </div>
+      <main className="min-h-[calc(100vh-14rem)] py-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-6 text-center">
+            <h3 className="text-lg font-medium mb-4">{error}</h3>
+            <p className="text-gray-600">
+              The client profile you&rsquo;re looking for may not exist or is no longer available.
+            </p>
+            <div className="mt-6">
+              {/* Was a raw <a href="/">, which triggers a full document
+                  navigation and discards the client-side router. */}
+              <Link
+                href="/"
+                className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200"
+              >
+                Go to Homepage
+              </Link>
             </div>
           </div>
-        </main>
-        <Footer />
-      </>
+        </div>
+      </main>
     );
   }
 
   if (!profile || !clientProfile) {
     return (
-      <>
-        <Header />
-        <main className="min-h-[calc(100vh-14rem)] py-8">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center py-12">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Profile not found</h3>
-              <p className="text-gray-600">
-                We couldn&rsquo;t find the client profile you&rsquo;re looking for.
-              </p>
-            </div>
+      <main className="min-h-[calc(100vh-14rem)] py-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center py-12">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Profile not found</h3>
+            <p className="text-gray-600">
+              We couldn&rsquo;t find the client profile you&rsquo;re looking for.
+            </p>
           </div>
-        </main>
-        <Footer />
-      </>
+        </div>
+      </main>
     );
   }
 
   return (
-    <>
-      <Header />
-      <main className="min-h-[calc(100vh-14rem)] py-8">
-        <div className="max-w-4xl mx-auto">
+    <main className="min-h-[calc(100vh-14rem)] py-8">
+      <div className="max-w-4xl mx-auto">
           {/* Profile Header */}
           <div className="mb-8">
             <div className="flex items-center space-x-4">
@@ -313,8 +297,6 @@ export default function ClientPublicProfilePage() {
           </div>
         </div>
       </main>
-      <Footer />
-    </>
   );
 }
 

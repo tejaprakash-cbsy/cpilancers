@@ -6,8 +6,6 @@ import { ClientAuthService as AuthService, ClientJobService as JobService, Clien
 import ProposalList from '@/components/proposals/proposal-list';
 import ProposalFilters from '@/components/proposals/proposal-filters';
 import { Button } from '@/components/ui/button';
-import { Header } from '@/components/layout/header';
-import { Footer } from '@/components/layout/footer';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/utils';
 import type { Job } from '@/types/database';
@@ -188,59 +186,47 @@ export default function JobProposalsPage() {
 
   if (loading) {
     return (
-      <>
-        <Header />
-        <main className="min-h-[calc(100vh-14rem)] py-8">
-          <div className="max-w-4xl mx-auto">
-            <div className="flex items-center justify-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-              <p className="ml-4 text-lg">Loading job proposals...</p>
-            </div>
+      <main className="min-h-[calc(100vh-14rem)] py-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+            <p className="ml-4 text-lg">Loading job proposals...</p>
           </div>
-        </main>
-        <Footer />
-      </>
+        </div>
+      </main>
     );
   }
 
   if (error) {
     return (
-      <>
-        <Header />
-        <main className="min-h-[calc(100vh-14rem)] py-8">
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-6">
-              <h3 className="text-lg font-medium mb-4">{error}</h3>
-              <p className="text-gray-600">
-                Please try again or contact support if the issue persists.
-              </p>
-              <div className="mt-4">
-                <Button onClick={() => loadData()}>Try Again</Button>
-              </div>
+      <main className="min-h-[calc(100vh-14rem)] py-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-6">
+            <h3 className="text-lg font-medium mb-4">{error}</h3>
+            <p className="text-gray-600">
+              Please try again or contact support if the issue persists.
+            </p>
+            <div className="mt-4">
+              <Button onClick={() => loadData()}>Try Again</Button>
             </div>
           </div>
-        </main>
-        <Footer />
-      </>
+        </div>
+      </main>
     );
   }
 
   if (!job) {
     return (
-      <>
-        <Header />
-        <main className="min-h-[calc(100vh-14rem)] py-8">
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center py-12">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Job not found</h3>
-              <p className="text-gray-600">
-                We couldn&rsquo;t find the job you&rsquo;re looking for.
-              </p>
-            </div>
+      <main className="min-h-[calc(100vh-14rem)] py-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center py-12">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Job not found</h3>
+            <p className="text-gray-600">
+              We couldn&rsquo;t find the job you&rsquo;re looking for.
+            </p>
           </div>
-        </main>
-        <Footer />
-      </>
+        </div>
+      </main>
     );
   }
 
@@ -251,10 +237,8 @@ export default function JobProposalsPage() {
   }
 
   return (
-    <>
-      <Header />
-      <main className="min-h-[calc(100vh-14rem)] py-8">
-        <div className="max-w-4xl mx-auto">
+    <main className="min-h-[calc(100vh-14rem)] py-8">
+      <div className="max-w-4xl mx-auto">
           {/* Job Header */}
           <div className="mb-6">
             <div className="border-b pb-4">
@@ -339,7 +323,5 @@ export default function JobProposalsPage() {
           )}
         </div>
       </main>
-      <Footer />
-    </>
   );
 }

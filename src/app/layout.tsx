@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Analytics } from "@vercel/analytics/next";
 import { AppChrome } from '@/components/layout/app-chrome';
 import './globals.css';
 
@@ -26,6 +27,7 @@ export default function RootLayout({
     <html lang="en" className="h-full">
       <body className="flex flex-col min-h-full antialiased bg-slate-50 text-slate-900">
         <AppChrome>{children}</AppChrome>
+        <Analytics />
       </body>
     </html>
   );

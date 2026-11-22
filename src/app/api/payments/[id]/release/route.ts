@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/services/auth.service';
 import { PaymentService } from '@/services/payment.service';
 import { paymentReleaseSchema } from '@/lib/validations/payment.schemas';
-import { formatErrorResponse } from '@/lib/errors';
+import { formatErrorResponse, PaymentsUnavailableError } from '@/lib/errors';
+import { getPaymentProvider } from '@/lib/payments/razorpay.provider';
 
 function id(request: NextRequest) {
   return request.nextUrl.pathname.split('/').filter(Boolean).at(-2)!;
@@ -17,6 +18,7 @@ function id(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    getPaymentProvider();
     const user = await AuthService.getCurrentUser();
     if (!user) {
       return NextResponse.json(
@@ -43,6 +45,12 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof PaymentsUnavailableError) {
+      return NextResponse.json(
+        { error: { code: 'PAYMENTS_UNAVAILABLE', message: 'Payments are not available yet.' } },
+        { status: 503 }
+      );
+    }
     const formatted = formatErrorResponse(error);
     return NextResponse.json(formatted, { status: formatted.statusCode });
   }
