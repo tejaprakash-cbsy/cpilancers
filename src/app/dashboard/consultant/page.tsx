@@ -9,7 +9,7 @@ import { ClientMessagingService, ClientProfileService, ClientProposalService } f
 import { Button } from '@/components/ui/button';
 
 const navItems: DashboardNavItem[] = [{ label: 'Overview', href: '/dashboard/consultant', icon: BarChart3 }, { label: 'Contracts', href: '/contracts', icon: Handshake }, { label: 'Proposals', href: '/proposals', icon: FileText }, { label: 'Saved jobs', href: '/jobs', icon: BookmarkCheck }, { label: 'Messages', href: '/messages', icon: MessagesSquare }, { label: 'Earnings', href: '/dashboard/consultant#earnings', icon: WalletCards }, { label: 'Profile', href: '/profile', icon: User }];
-const footerItems: DashboardNavItem[] = [{ label: 'Help center', href: '/help', icon: CircleHelp }, { label: 'Settings', href: '/settings', icon: Settings }];
+const footerItems: DashboardNavItem[] = [{ label: 'Help center', href: '/contact', icon: CircleHelp }, { label: 'Settings', href: '/profile', icon: Settings }];
 
 type State = { profile: Awaited<ReturnType<typeof ClientProfileService.getProfile>> | null; proposals: Awaited<ReturnType<typeof ClientProposalService.getProposalsByConsultant>>['proposals']; conversations: unknown[]; loading: boolean; error: string | null };
 
@@ -31,7 +31,12 @@ export default function ConsultantDashboardPage() {
 
     ClientProfileService.getProfile()
       .then(async (profile) => {
-        const [proposalData, conversations] = await Promise.all([ClientProposalService.getProposalsByConsultant({ page: 1, limit: 5 }), ClientMessagingService.getUserConversations()]);
+        const [proposalData, conversations] = await Promise.all([
+          profile?.consultantProfile
+            ? ClientProposalService.getProposalsByConsultant({ page: 1, limit: 5 })
+            : Promise.resolve({ proposals: [], total: 0, page: 1, limit: 5 }),
+          ClientMessagingService.getUserConversations().catch(() => []),
+        ]);
         if (cancelled) return;
         setState({ profile, proposals: proposalData.proposals, conversations, loading: false, error: null });
       })
@@ -49,5 +54,35 @@ export default function ConsultantDashboardPage() {
   // who may not exist. The shell renders an empty circle until data arrives.
   if (state.loading) return <DashboardShell accountName="Consultant account" roleLabel="Freelancer account" initials="" navItems={navItems} footerItems={footerItems}><div className="flex min-h-[calc(100vh-72px)] items-center justify-center"><div className="h-10 w-10 animate-spin rounded-full border-2 border-[#dde1e7] border-t-[#365cf5]" /></div></DashboardShell>;
   const profile = state.profile; const name = profile?.profile.display_name || profile?.profile.first_name || 'Consultant'; const initials = name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
-  return <DashboardShell accountName={name} roleLabel="Freelancer account" initials={initials} navItems={navItems} footerItems={footerItems} searchPlaceholder="Search jobs, contracts, messages"><div className="p-5 sm:p-8"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><h1 className="text-[28px] font-normal">Good morning, {name.split(' ')[0]}</h1><p className="mt-1 text-sm text-[#667085]">Here&apos;s what&apos;s moving across your work this week.</p></div><Button onClick={() => router.push('/jobs')}>Find new work</Button></div>{state.error && <div className="mt-5 rounded-[10px] border border-[#f4c7c3] bg-[#fef0ef] p-4 text-sm text-[#b42318]">{state.error}</div>}<div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><DashboardMetric label="Active contracts" value="—" detail="No contract-list endpoint" icon={Handshake} /><DashboardMetric label="Open proposals" value={String(state.proposals.length)} detail="From live proposals API" icon={Send} /><DashboardMetric label="September earnings" value="—" detail="No earnings endpoint" icon={WalletCards} /><DashboardMetric label="Profile views" value="—" detail="No view-count endpoint" icon={Eye} /></div><div className="mt-5 grid gap-5 xl:grid-cols-[1fr_300px]"><div className="space-y-5"><DashboardPanel title="Active contracts" action={<DashboardLink href="/contracts">View all contracts</DashboardLink>}><EmptyDashboardPanel title="Contract data unavailable" detail="The current frontend API does not expose consultant contracts." /></DashboardPanel><DashboardPanel title="Proposal pipeline" action={<DashboardLink href="/proposals">Manage proposals</DashboardLink>}><div className="grid gap-3 sm:grid-cols-4">{['draft', 'submitted', 'shortlisted', 'accepted'].map((status) => <div key={status} className="rounded-[8px] bg-[#f0f2f5] p-4"><strong className="block text-xl font-normal">{state.proposals.filter((proposal) => proposal.status === status).length}</strong><span className="mt-1 block text-[10px] capitalize text-[#667085]">{status}</span></div>)}</div>{state.proposals.length === 0 && <p className="mt-4 text-xs text-[#98a2b3]">No proposals returned for this account.</p>}</DashboardPanel><div className="grid gap-5 md:grid-cols-2"><DashboardPanel title="Saved jobs"><EmptyDashboardPanel title="Saved jobs unavailable" detail="Saved-job data is not exposed by the current API." /></DashboardPanel><DashboardPanel title="Messages" action={<DashboardLink href="/messages">Open inbox</DashboardLink>}>{state.conversations.length ? <div className="space-y-4">{state.conversations.slice(0, 3).map((conversation, index) => <MessagePreview key={index} name={`Conversation ${index + 1}`} detail="Open conversation to view messages" />)}</div> : <EmptyDashboardPanel title="No conversations yet" detail="Messages will appear here when clients contact you." />}</DashboardPanel></div></div><div className="space-y-5"><DashboardPanel title="Profile strength"><div className="flex items-center gap-5"><div className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-[#365cf5] text-sm font-semibold text-[#365cf5]">{profile?.consultantProfile?.profile_score || 0}%</div><div><p className="text-xs font-semibold">{(profile?.consultantProfile?.profile_score || 0) >= 80 ? 'Strong profile' : 'Improve profile'}</p><p className="mt-1 text-[10px] leading-4 text-[#667085]">Complete your profile to improve visibility.</p></div></div><Button variant="outline" size="sm" className="mt-5 w-full" onClick={() => router.push('/profile')}>View profile</Button></DashboardPanel><UnavailablePanel title="Earnings" detail="Earnings totals and charts are not exposed by the current API." /><UnavailablePanel title="Performance" detail="Performance metrics are not available from current services." /><UnavailablePanel title="Notifications" detail="Notification aggregation is not available for this dashboard." /></div></div></div></DashboardShell>;
+  return (
+    <DashboardShell accountName={name} roleLabel="Freelancer account" initials={initials} navItems={navItems} footerItems={footerItems} searchPlaceholder="Search jobs, contracts, messages">
+      <div className="p-5 sm:p-8">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+          <div>
+            <h1 className="text-[28px] font-normal">Good morning, {name.split(' ')[0]}</h1>
+            <p className="mt-1 text-sm text-[#667085]">Here&apos;s what&apos;s moving across your work this week.</p>
+          </div>
+          <Button onClick={() => router.push('/jobs')}>Find new work</Button>
+        </div>
+
+        {!profile?.consultantProfile && (
+          <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50/70 p-5 text-[#172033]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-medium text-[#172033]">Complete your consultant profile</h2>
+                <p className="mt-1 text-sm text-[#667085]">
+                  Add your SAP specialization, CPI experience, hourly rate, and overview to start receiving job matches and submitting proposals.
+                </p>
+              </div>
+              <Button onClick={() => router.push('/profile')} className="shrink-0 bg-[#365cf5] hover:bg-[#2445c7] text-white">
+                Complete profile
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {state.error && state.error !== 'Resource not found.' && (
+          <div className="mt-5 rounded-[10px] border border-[#f4c7c3] bg-[#fef0ef] p-4 text-sm text-[#b42318]">{state.error}</div>
+        )}<div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><DashboardMetric label="Active contracts" value="—" detail="No contract-list endpoint" icon={Handshake} /><DashboardMetric label="Open proposals" value={String(state.proposals.length)} detail="From live proposals API" icon={Send} /><DashboardMetric label="September earnings" value="—" detail="No earnings endpoint" icon={WalletCards} /><DashboardMetric label="Profile views" value="—" detail="No view-count endpoint" icon={Eye} /></div><div className="mt-5 grid gap-5 xl:grid-cols-[1fr_300px]"><div className="space-y-5"><DashboardPanel title="Active contracts" action={<DashboardLink href="/contracts">View all contracts</DashboardLink>}><EmptyDashboardPanel title="Contract data unavailable" detail="The current frontend API does not expose consultant contracts." /></DashboardPanel><DashboardPanel title="Proposal pipeline" action={<DashboardLink href="/proposals">Manage proposals</DashboardLink>}><div className="grid gap-3 sm:grid-cols-4">{['draft', 'submitted', 'shortlisted', 'accepted'].map((status) => <div key={status} className="rounded-[8px] bg-[#f0f2f5] p-4"><strong className="block text-xl font-normal">{state.proposals.filter((proposal) => proposal.status === status).length}</strong><span className="mt-1 block text-[10px] capitalize text-[#667085]">{status}</span></div>)}</div>{state.proposals.length === 0 && <p className="mt-4 text-xs text-[#98a2b3]">No proposals returned for this account.</p>}</DashboardPanel><div className="grid gap-5 md:grid-cols-2"><DashboardPanel title="Saved jobs"><EmptyDashboardPanel title="Saved jobs unavailable" detail="Saved-job data is not exposed by the current API." /></DashboardPanel><DashboardPanel title="Messages" action={<DashboardLink href="/messages">Open inbox</DashboardLink>}>{state.conversations.length ? <div className="space-y-4">{state.conversations.slice(0, 3).map((conversation, index) => <MessagePreview key={index} name={`Conversation ${index + 1}`} detail="Open conversation to view messages" />)}</div> : <EmptyDashboardPanel title="No conversations yet" detail="Messages will appear here when clients contact you." />}</DashboardPanel></div></div><div className="space-y-5"><DashboardPanel title="Profile strength"><div className="flex items-center gap-5"><div className="flex h-16 w-16 items-center justify-center rounded-full border-4 border-[#365cf5] text-sm font-semibold text-[#365cf5]">{profile?.consultantProfile?.profile_score || 0}%</div><div><p className="text-xs font-semibold">{(profile?.consultantProfile?.profile_score || 0) >= 80 ? 'Strong profile' : 'Improve profile'}</p><p className="mt-1 text-[10px] leading-4 text-[#667085]">Complete your profile to improve visibility.</p></div></div><Button variant="outline" size="sm" className="mt-5 w-full" onClick={() => router.push('/profile')}>View profile</Button></DashboardPanel><UnavailablePanel title="Earnings" detail="Earnings totals and charts are not exposed by the current API." /><UnavailablePanel title="Performance" detail="Performance metrics are not available from current services." /><UnavailablePanel title="Notifications" detail="Notification aggregation is not available for this dashboard." /></div></div></div></DashboardShell>
+  );
 }

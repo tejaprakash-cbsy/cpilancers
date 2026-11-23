@@ -7,68 +7,98 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardDescription } from '@/components/ui/card';
-import { LogIn, Mail } from 'lucide-react';
+import { LogIn, Mail, Phone, KeyRound } from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
+import { GoogleIcon } from '@/components/icons/google-icon';
+import { createClient } from '@/lib/supabase/client';
+import { getAppUrl } from '@/lib/auth/app-url';
 import { resolvePostLoginPath } from '@/lib/auth/role-redirects';
+import {
+  emailOtpSendSchema,
+  emailOtpVerifySchema,
+  phoneOtpSendSchema,
+  phoneOtpVerifySchema,
+} from '@/lib/validations/auth.schemas';
 import type { UserRole } from '@/types/database';
 import type { LoginFormData } from '@/lib/validations/auth.schemas';
 
-/**
- * Shape of `POST /api/auth/login`. `user.role` is `null` when the role lookup
- * failed on the server, in which case the shared helper picks the default home.
- */
 interface LoginResponse {
   success?: boolean;
   data?: { user?: { id?: string; email?: string; role?: UserRole | null } };
   error?: { message?: string };
 }
 
+type AuthMode = 'password' | 'email-otp' | 'phone-otp';
+
+function formatAuthError(err: unknown): string {
+  if (!err) return 'An error occurred';
+  const errorObj = err as { code?: string; status?: number; message?: string };
+  const msg = errorObj.message || '';
+  if (
+    errorObj.code === 'over_email_send_rate_limit' ||
+    errorObj.code === 'email_rate_limit_exceeded' ||
+    errorObj.code === 'over_sms_send_rate_limit' ||
+    errorObj.code === 'sms_rate_limit_exceeded' ||
+    errorObj.status === 429 ||
+    /rate limit|too many requests|once every \d+ seconds/i.test(msg)
+  ) {
+    return 'Too many verification requests. Please wait a few minutes before trying again.';
+  }
+  return msg || 'Authentication failed. Please try again.';
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  const enablePhoneOtp = process.env.NEXT_PUBLIC_ENABLE_PHONE_OTP === 'true';
+
+  const [authMode, setAuthMode] = useState<AuthMode>('password');
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+
+  // Password Login State
   const [formData, setFormData] = useState<LoginFormData>({ email: '', password: '' });
   const [errors, setErrors] = useState<Partial<Record<keyof LoginFormData, string>>>({});
 
-  // Only same-origin relative paths are honoured, so a crafted `?next=` value
-  // cannot turn this form into an open redirect that bounces a signed-in user
-  // to an attacker's site. The validation itself lives in `role-redirects` so
-  // the server-side and client-side rules cannot drift apart.
+  // Email OTP State
+  const [emailOtpStep, setEmailOtpStep] = useState<'input' | 'verify'>('input');
+  const [emailOtpAddress, setEmailOtpAddress] = useState('');
+  const [emailOtpCode, setEmailOtpCode] = useState('');
+  const [emailCooldown, setEmailCooldown] = useState(0);
+
+  // Phone OTP State
+  const [phoneOtpStep, setPhoneOtpStep] = useState<'input' | 'verify'>('input');
+  const [phoneOtpNumber, setPhoneOtpNumber] = useState('');
+  const [phoneOtpCode, setPhoneOtpCode] = useState('');
+  const [phoneCooldown, setPhoneCooldown] = useState(0);
+
   const nextPath = (() => {
     const raw = searchParams.get('next');
     return raw && raw.startsWith('/') && !raw.startsWith('//') ? raw : null;
   })();
 
-  const handleChange = (field: keyof LoginFormData, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-    if (errors[field]) {
-      setErrors((prev) => ({ ...prev, [field]: undefined }));
-    }
-  };
+  // Cooldown timers
+  useEffect(() => {
+    if (emailCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setEmailCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [emailCooldown]);
 
-  const validateForm = (): boolean => {
-    const newErrors: Partial<Record<keyof LoginFormData, string>> = {};
-    if (!formData.email.trim()) newErrors.email = 'Email is required';
-    else if (!formData.email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) newErrors.email = 'Invalid email format';
-    if (!formData.password) newErrors.password = 'Password is required';
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  useEffect(() => {
+    if (phoneCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setPhoneCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [phoneCooldown]);
 
-  // An already-authenticated visitor has no business on the sign-in form, and
-  // after a refresh the session cookie is still valid while this client
-  // component starts with empty state. Probe once on mount and bounce them to
-  // their own dashboard.
-  //
-  // Fails open on purpose: a network error or a 401 must leave the form usable,
-  // and a still-in-flight request must not fire a redirect once the user has
-  // already started typing. The `cancelled` flag covers unmount and the
-  // `started` ref covers React 19 StrictMode's double-invoked effects, so the
-  // probe runs exactly once.
+  // Session probe
   const sessionCheckStarted = useRef(false);
-
   useEffect(() => {
     if (sessionCheckStarted.current) return;
     sessionCheckStarted.current = true;
@@ -85,7 +115,7 @@ export default function LoginPage() {
         if (cancelled || !data?.success) return;
         router.replace(resolvePostLoginPath(data.data?.role, nextPath));
       } catch {
-        // Leave the sign-in form in place; it must work regardless.
+        // Leave the sign-in form in place
       }
     })();
 
@@ -94,11 +124,49 @@ export default function LoginPage() {
     };
   }, [router, nextPath]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Handle Google OAuth
+  const handleGoogleSignIn = async () => {
+    try {
+      setIsGoogleLoading(true);
+      setError('');
+      const supabase = createClient();
+      const targetNext = nextPath || '/dashboard';
+      const redirectTo = `${getAppUrl()}/api/auth/callback?next=${encodeURIComponent(targetNext)}`;
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo,
+        },
+      });
+      if (oauthError) throw oauthError;
+    } catch (err: unknown) {
+      setError(formatAuthError(err));
+      setIsGoogleLoading(false);
+    }
+  };
+
+  // Password handlers
+  const handlePasswordChange = (field: keyof LoginFormData, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    if (errors[field]) {
+      setErrors((prev) => ({ ...prev, [field]: undefined }));
+    }
+  };
+
+  const validatePasswordForm = (): boolean => {
+    const newErrors: Partial<Record<keyof LoginFormData, string>> = {};
+    if (!formData.email.trim()) newErrors.email = 'Email is required';
+    else if (!formData.email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) newErrors.email = 'Invalid email format';
+    if (!formData.password) newErrors.password = 'Password is required';
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setNotice('');
-    if (!validateForm()) return;
+    if (!validatePasswordForm()) return;
 
     setIsLoading(true);
     try {
@@ -112,12 +180,10 @@ export default function LoginPage() {
         throw new Error(data.error?.message || 'Sign in failed');
       }
 
-      // Route on the role the server resolved, not a hardcoded path. A safe
-      // `?next=` still wins so the deep link the user was bounced from works.
       router.push(resolvePostLoginPath(data.data?.user?.role, nextPath));
       router.refresh();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'An error occurred during sign in');
+      setError(formatAuthError(err));
     } finally {
       setIsLoading(false);
     }
@@ -137,23 +203,182 @@ export default function LoginPage() {
         body: JSON.stringify({ email }),
       });
 
-      // `fetch` only rejects on a network-level failure. A 4xx/5xx resolves
-      // normally, so without this check the user was shown the reassuring
-      // "reset link is on its way" message even when the request was rejected --
-      // telling them an email was sent when it demonstrably was not.
       if (!response.ok) {
-        throw new Error('Unable to send the reset email right now.');
+        const data = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
+        throw new Error(data.error?.message || 'Unable to send the reset email right now.');
       }
 
-      // Deliberately neutral copy: the endpoint is written to avoid disclosing
-      // whether an account exists, so the UI must not imply either outcome.
       setNotice('If an account exists for that address, a password reset link is on its way.');
-    } catch {
-      setError('Unable to send the reset email right now. Please try again.');
+    } catch (err: unknown) {
+      setError(formatAuthError(err));
     }
   };
 
-return (
+  // Email OTP handlers
+  const handleSendEmailOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setError('');
+    setNotice('');
+
+    const parseResult = emailOtpSendSchema.safeParse({ email: emailOtpAddress });
+    if (!parseResult.success) {
+      setError(parseResult.error.issues[0]?.message || 'Please enter a valid email address');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/auth/otp/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: 'email', email: parseResult.data.email }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
+      if (!response.ok) {
+        throw new Error(data.error?.message || 'Failed to send verification code');
+      }
+
+      setEmailOtpStep('verify');
+      setEmailCooldown(60);
+      setNotice(`A 6-digit verification code has been sent to ${parseResult.data.email}`);
+    } catch (err: unknown) {
+      setError(formatAuthError(err));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyEmailOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    const parseResult = emailOtpVerifySchema.safeParse({
+      email: emailOtpAddress,
+      token: emailOtpCode,
+    });
+
+    if (!parseResult.success) {
+      setError(parseResult.error.issues[0]?.message || 'Please enter a valid 6-digit code');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/auth/otp/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel: 'email',
+          identifier: parseResult.data.email,
+          token: parseResult.data.token,
+          role: 'consultant',
+        }),
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        data?: { user?: { role?: UserRole } };
+        error?: { message?: string };
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error?.message || 'Invalid or expired verification code');
+      }
+
+      const userRole = data.data?.user?.role || 'consultant';
+      router.push(resolvePostLoginPath(userRole, nextPath));
+      router.refresh();
+    } catch (err: unknown) {
+      setError(formatAuthError(err));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Phone OTP handlers
+  const handleSendPhoneOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setError('');
+    setNotice('');
+
+    const parseResult = phoneOtpSendSchema.safeParse({ phone: phoneOtpNumber });
+    if (!parseResult.success) {
+      setError(parseResult.error.issues[0]?.message || 'Please enter a valid phone number with country code (e.g. +1234567890)');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/auth/otp/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: 'phone', phone: parseResult.data.phone }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
+      if (!response.ok) {
+        throw new Error(data.error?.message || 'Failed to send verification SMS');
+      }
+
+      setPhoneOtpStep('verify');
+      setPhoneCooldown(60);
+      setNotice(`A 6-digit verification code has been sent to ${parseResult.data.phone}`);
+    } catch (err: unknown) {
+      setError(formatAuthError(err));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyPhoneOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    const parseResult = phoneOtpVerifySchema.safeParse({
+      phone: phoneOtpNumber,
+      token: phoneOtpCode,
+    });
+
+    if (!parseResult.success) {
+      setError(parseResult.error.issues[0]?.message || 'Please enter a valid 6-digit code');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/auth/otp/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel: 'phone',
+          identifier: parseResult.data.phone,
+          token: parseResult.data.token,
+          role: 'consultant',
+        }),
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        data?: { user?: { role?: UserRole } };
+        error?: { message?: string };
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error?.message || 'Invalid or expired verification code');
+      }
+
+      const userRole = data.data?.user?.role || 'consultant';
+      router.push(resolvePostLoginPath(userRole, nextPath));
+      router.refresh();
+    } catch (err: unknown) {
+      setError(formatAuthError(err));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const switchMode = (mode: AuthMode) => {
+    setAuthMode(mode);
+    setError('');
+    setNotice('');
+  };
+
+  return (
     <div className="flex items-center justify-center min-h-screen p-4">
       <Card className="max-w-md w-full">
         <CardHeader className="text-center">
@@ -161,76 +386,327 @@ return (
             <Logo size={44} />
           </div>
           <h1 className="text-2xl font-medium leading-normal text-[#172033]">Welcome back</h1>
-          <CardDescription>Sign in to your Lancers account</CardDescription>
+          <CardDescription>Sign in to your CPI Lancers account</CardDescription>
         </CardHeader>
 
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-            {error && (
+          {error && (
+            <div className="mb-4">
               <Alert variant="error" title="Sign in failed">
                 {error}
               </Alert>
-            )}
-            {notice && (
-              <Alert variant="info" title="Check your inbox">
+            </div>
+          )}
+          {notice && (
+            <div className="mb-4">
+              <Alert variant="info" title="Verification code">
                 {notice}
               </Alert>
-            )}
+            </div>
+          )}
 
-            <Input
-              id="login-email"
-              label="Email Address"
-              type="email"
-              autoComplete="email"
-              value={formData.email}
-              onChange={(e) => handleChange('email', e.target.value)}
-              error={errors.email}
-              disabled={isLoading}
-              leftIcon={<Mail className="w-4 h-4" aria-hidden="true" />}
-              required
-            />
+          {/* Continue with Google */}
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            onClick={handleGoogleSignIn}
+            isLoading={isGoogleLoading}
+            disabled={isLoading || isGoogleLoading}
+            leftIcon={<GoogleIcon className="w-5 h-5" />}
+            className="w-full border-slate-300 text-slate-700 hover:bg-slate-50 hover:text-slate-900 font-medium mb-4"
+          >
+            Continue with Google
+          </Button>
 
-            <Input
-              id="login-password"
-              label="Password"
-              type="password"
-              autoComplete="current-password"
-              value={formData.password}
-              onChange={(e) => handleChange('password', e.target.value)}
-              error={errors.password}
-              disabled={isLoading}
-              required
-            />
+          {/* Divider */}
+          <div className="relative my-4">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-3 text-slate-500 font-medium">
+                Or sign in with
+              </span>
+            </div>
+          </div>
 
-            <div className="flex justify-end">
+          {/* Mode Switcher Tabs */}
+          <div className="flex border-b border-slate-200 mb-6">
+            <button
+              type="button"
+              onClick={() => switchMode('password')}
+              className={`flex-1 py-2 text-sm font-medium border-b-2 transition-colors ${
+                authMode === 'password'
+                  ? 'border-[#365cf5] text-[#365cf5]'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Password
+            </button>
+            <button
+              type="button"
+              onClick={() => switchMode('email-otp')}
+              className={`flex-1 py-2 text-sm font-medium border-b-2 transition-colors ${
+                authMode === 'email-otp'
+                  ? 'border-[#365cf5] text-[#365cf5]'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Email Code
+            </button>
+            {enablePhoneOtp && (
               <button
                 type="button"
-                onClick={handleForgotPassword}
-                disabled={isLoading}
-                className="text-xs font-medium text-[#365cf5] hover:text-[#2445c7] hover:underline disabled:opacity-50"
+                onClick={() => switchMode('phone-otp')}
+                className={`flex-1 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  authMode === 'phone-otp'
+                    ? 'border-[#365cf5] text-[#365cf5]'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
               >
-                Forgot password?
+                Phone Code
               </button>
+            )}
+          </div>
+
+          {/* Mode 1: Password Form */}
+          {authMode === 'password' && (
+            <form onSubmit={handlePasswordSubmit} className="space-y-4" noValidate>
+              <Input
+                id="login-email"
+                label="Email Address"
+                type="email"
+                autoComplete="email"
+                value={formData.email}
+                onChange={(e) => handlePasswordChange('email', e.target.value)}
+                error={errors.email}
+                disabled={isLoading}
+                leftIcon={<Mail className="w-4 h-4" aria-hidden="true" />}
+                required
+              />
+
+              <Input
+                id="login-password"
+                label="Password"
+                type="password"
+                autoComplete="current-password"
+                value={formData.password}
+                onChange={(e) => handlePasswordChange('password', e.target.value)}
+                error={errors.password}
+                disabled={isLoading}
+                required
+              />
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  disabled={isLoading}
+                  className="text-xs font-medium text-[#365cf5] hover:text-[#2445c7] hover:underline disabled:opacity-50"
+                >
+                  Forgot password?
+                </button>
+              </div>
+
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                isLoading={isLoading}
+                leftIcon={<LogIn className="w-5 h-5" aria-hidden="true" />}
+                className="w-full"
+              >
+                Sign In
+              </Button>
+            </form>
+          )}
+
+          {/* Mode 2: Email OTP Form */}
+          {authMode === 'email-otp' && (
+            <div className="space-y-4">
+              {emailOtpStep === 'input' ? (
+                <form onSubmit={handleSendEmailOtp} className="space-y-4" noValidate>
+                  <Input
+                    id="otp-email"
+                    label="Email Address"
+                    type="email"
+                    autoComplete="email"
+                    value={emailOtpAddress}
+                    onChange={(e) => setEmailOtpAddress(e.target.value)}
+                    disabled={isLoading}
+                    leftIcon={<Mail className="w-4 h-4" aria-hidden="true" />}
+                    placeholder="you@example.com"
+                    required
+                  />
+
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="lg"
+                    isLoading={isLoading}
+                    leftIcon={<Mail className="w-5 h-5" aria-hidden="true" />}
+                    className="w-full"
+                  >
+                    Send Verification Code
+                  </Button>
+                </form>
+              ) : (
+                <form onSubmit={handleVerifyEmailOtp} className="space-y-4" noValidate>
+                  <div className="text-xs text-slate-600 flex justify-between items-center">
+                    <span>
+                      Code sent to <strong className="text-slate-800">{emailOtpAddress}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setEmailOtpStep('input')}
+                      className="text-[#365cf5] hover:underline"
+                    >
+                      Change
+                    </button>
+                  </div>
+
+                  <Input
+                    id="otp-email-code"
+                    label="6-Digit Verification Code"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={emailOtpCode}
+                    onChange={(e) => setEmailOtpCode(e.target.value.replace(/\D/g, ''))}
+                    disabled={isLoading}
+                    placeholder="123456"
+                    leftIcon={<KeyRound className="w-4 h-4" aria-hidden="true" />}
+                    required
+                  />
+
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="lg"
+                    isLoading={isLoading}
+                    leftIcon={<LogIn className="w-5 h-5" aria-hidden="true" />}
+                    className="w-full"
+                  >
+                    Verify & Sign In
+                  </Button>
+
+                  <div className="text-center text-xs text-slate-500 pt-1">
+                    {emailCooldown > 0 ? (
+                      <span>Resend code in {emailCooldown}s</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleSendEmailOtp()}
+                        disabled={isLoading}
+                        className="text-[#365cf5] hover:underline font-medium"
+                      >
+                        Resend Code
+                      </button>
+                    )}
+                  </div>
+                </form>
+              )}
             </div>
+          )}
 
-            <Button
-              type="submit"
-              variant="primary"
-              size="lg"
-              isLoading={isLoading}
-              leftIcon={<LogIn className="w-5 h-5" aria-hidden="true" />}
-              className="w-full"
-            >
-              Sign In
-            </Button>
+          {/* Mode 3: Phone OTP Form */}
+          {authMode === 'phone-otp' && enablePhoneOtp && (
+            <div className="space-y-4">
+              {phoneOtpStep === 'input' ? (
+                <form onSubmit={handleSendPhoneOtp} className="space-y-4" noValidate>
+                  <Input
+                    id="otp-phone"
+                    label="Mobile Phone Number"
+                    type="tel"
+                    autoComplete="tel"
+                    value={phoneOtpNumber}
+                    onChange={(e) => setPhoneOtpNumber(e.target.value)}
+                    disabled={isLoading}
+                    leftIcon={<Phone className="w-4 h-4" aria-hidden="true" />}
+                    placeholder="+1234567890"
+                    helperText="Include country code (e.g. +1... or +91...)"
+                    required
+                  />
 
-            <p className="text-center text-sm text-slate-600">
-              Don&apos;t have an account?{' '}
-              <Link href="/register" className="text-[#365cf5] font-medium hover:text-[#2445c7] hover:underline">
-                Create one
-              </Link>
-            </p>
-          </form>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="lg"
+                    isLoading={isLoading}
+                    leftIcon={<Phone className="w-5 h-5" aria-hidden="true" />}
+                    className="w-full"
+                  >
+                    Send SMS Code
+                  </Button>
+                </form>
+              ) : (
+                <form onSubmit={handleVerifyPhoneOtp} className="space-y-4" noValidate>
+                  <div className="text-xs text-slate-600 flex justify-between items-center">
+                    <span>
+                      Code sent to <strong className="text-slate-800">{phoneOtpNumber}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPhoneOtpStep('input')}
+                      className="text-[#365cf5] hover:underline"
+                    >
+                      Change
+                    </button>
+                  </div>
+
+                  <Input
+                    id="otp-phone-code"
+                    label="6-Digit SMS Code"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={phoneOtpCode}
+                    onChange={(e) => setPhoneOtpCode(e.target.value.replace(/\D/g, ''))}
+                    disabled={isLoading}
+                    placeholder="123456"
+                    leftIcon={<KeyRound className="w-4 h-4" aria-hidden="true" />}
+                    required
+                  />
+
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="lg"
+                    isLoading={isLoading}
+                    leftIcon={<LogIn className="w-5 h-5" aria-hidden="true" />}
+                    className="w-full"
+                  >
+                    Verify & Sign In
+                  </Button>
+
+                  <div className="text-center text-xs text-slate-500 pt-1">
+                    {phoneCooldown > 0 ? (
+                      <span>Resend code in {phoneCooldown}s</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleSendPhoneOtp()}
+                        disabled={isLoading}
+                        className="text-[#365cf5] hover:underline font-medium"
+                      >
+                        Resend Code
+                      </button>
+                    )}
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
+
+          <p className="mt-6 text-center text-sm text-slate-600">
+            Don&apos;t have an account?{' '}
+            <Link href="/register" className="text-[#365cf5] font-medium hover:text-[#2445c7] hover:underline">
+              Create one
+            </Link>
+          </p>
         </CardContent>
       </Card>
     </div>

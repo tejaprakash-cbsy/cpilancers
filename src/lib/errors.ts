@@ -61,6 +61,13 @@ export class PaymentsUnavailableError extends AppError {
   }
 }
 
+export class RateLimitError extends AppError {
+  constructor(message: string = 'Too many verification emails requested. Please wait a few minutes before trying again.') {
+    super(message, 429, 'RATE_LIMITED');
+    this.name = 'RateLimitError';
+  }
+}
+
 /**
  * Field-level shape for a single Zod validation issue.
  *
@@ -106,6 +113,7 @@ const PUBLIC_MESSAGES: Record<string, string> = {
   VALIDATION_ERROR: 'Validation failed.',
   CONFLICT: 'Resource state conflict.',
   PAYMENTS_UNAVAILABLE: 'Payments are not available yet.',
+  RATE_LIMITED: 'Too many verification emails requested. Please wait a few minutes before trying again.',
 };
 
 function safeDetails(details: unknown): ValidationIssueDetail[] | undefined {
@@ -135,6 +143,17 @@ export function formatErrorResponse(error: unknown, correlationId?: string) {
           ...(requestId ? { correlationId: requestId } : {}),
         },
         statusCode: 503,
+      };
+    }
+    if (error instanceof RateLimitError || error.code === 'RATE_LIMITED') {
+      return {
+        success: false,
+        error: {
+          code: 'RATE_LIMITED',
+          message: error.message || 'Too many verification emails requested. Please wait a few minutes before trying again.',
+          ...(requestId ? { correlationId: requestId } : {}),
+        },
+        statusCode: 429,
       };
     }
     const message = error.statusCode >= 500

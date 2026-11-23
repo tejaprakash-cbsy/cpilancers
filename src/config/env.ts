@@ -57,6 +57,7 @@ const envSchema = z.object({
   // Feature Flags
   NEXT_PUBLIC_ENABLE_REGISTRATION: z.string().default('true').transform((val) => val === 'true'),
   NEXT_PUBLIC_ENABLE_MESSAGING: z.string().default('true').transform((val) => val === 'true'),
+  NEXT_PUBLIC_ENABLE_PHONE_OTP: z.string().default('false').transform((val) => val === 'true'),
 
 });
 
@@ -86,6 +87,7 @@ function validateEnv(): Env {
     NEXT_PUBLIC_RAZORPAY_KEY_ID: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
     NEXT_PUBLIC_ENABLE_REGISTRATION: process.env.NEXT_PUBLIC_ENABLE_REGISTRATION || 'true',
     NEXT_PUBLIC_ENABLE_MESSAGING: process.env.NEXT_PUBLIC_ENABLE_MESSAGING || 'true',
+    NEXT_PUBLIC_ENABLE_PHONE_OTP: process.env.NEXT_PUBLIC_ENABLE_PHONE_OTP || 'false',
     EMAIL_FROM: process.env.EMAIL_FROM || 'noreply@sapintegration.com',
   };
 

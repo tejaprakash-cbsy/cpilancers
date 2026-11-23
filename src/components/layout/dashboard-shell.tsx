@@ -39,8 +39,8 @@ const defaultNavItems: DashboardNavItem[] = [
 ];
 
 const defaultFooterItems: DashboardNavItem[] = [
-  { label: 'Help center', href: '/help', icon: CircleHelp },
-  { label: 'Settings', href: '/settings', icon: Settings },
+  { label: 'Help center', href: '/contact', icon: CircleHelp },
+  { label: 'Settings', href: '/profile', icon: Settings },
 ];
 
 export function DashboardShell({

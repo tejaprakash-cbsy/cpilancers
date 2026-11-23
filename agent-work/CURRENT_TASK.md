@@ -2,55 +2,44 @@
 
 ## Assignment
 
-ID: `BATCH-2C-PAYMENTS-NAV-PRIVACY`
+ID: `BATCH-3C-AUTH-REFINED-ARCHITECTURE`
 
 Status: `REVIEW_REQUIRED`
 
 Approval: `APPROVED FOR LOCAL IMPLEMENTATION`
 
-Task: Batch 2c: Make payments fail closed, fix nav labels, add privacy sentence, check /contact. Working tree on master. Do NOT touch supabase/, forum files, or git state. Local only: no push, no commit, no secrets printed, no new dependencies. Small diffs.
+Task: Implement three additional authentication methods in CPI Lancers using `@supabase/ssr` with idempotent `AuthService.ensureUserRecords`, dedicated `/api/auth/otp/request` and `/api/auth/otp/verify` server endpoints, strict role allowlist enforcement, Google OAuth PKCE flow, and feature-flagged Phone OTP. Local only: no git push, no live DB migrations, do not touch migration 00018 or the forum-security branch.
 
 ## Actions Executed
 
-1. **Payment Provider Fail-Closed (`src/lib/payments/razorpay.provider.ts`, `src/lib/errors.ts`):**
-   - Added typed `PaymentsUnavailableError` (HTTP 503, code `PAYMENTS_UNAVAILABLE`).
-   - Updated `getPaymentProvider()` to fail closed:
-     - In production (`VERCEL_ENV === 'production' || NODE_ENV === 'production'`), throws `PaymentsUnavailableError` if `RAZORPAY_KEY_ID` or `RAZORPAY_KEY_SECRET` are missing. Mock provider is disallowed in production even if `USE_MOCK_PAYMENT === 'true'`.
-     - In non-production, `MockPaymentProvider` is used ONLY when `USE_MOCK_PAYMENT === 'true'`.
-     - If neither credentials nor `USE_MOCK_PAYMENT === 'true'` are present in development, throws `PaymentsUnavailableError` (no silent fallback to mock).
-     - Added `resetPaymentProvider()` to allow resetting singleton provider in test environments.
+1. **Idempotent User Provisioning (`AuthService.ensureUserRecords`):**
+   - Implemented `AuthService.ensureUserRecords(authUser, requestedRole?)` with `createAdminClient()`.
+   - Strict role security: Only permits `'client'` or `'consultant'` (defaults to `'client'`). Rejects `'admin'` unconditionally from query params, request bodies, or OAuth user metadata.
+   - Idempotently creates records in `public.users` and `public.profiles` if missing, sets `status: 'active'`, marks `is_email_verified: true` for Google / verified Email OTP, and derives user names from metadata or fallback.
+   - Implemented `AuthService.updateLastLogin(userId)` to keep login timestamps updated.
 
-2. **Payment API Routes Fail-Closed:**
-   - Updated all payment, payout, connect, refund, release, and webhook routes:
-     - `src/app/api/payments/route.ts` (GET and POST)
-     - `src/app/api/payments/[id]/route.ts` (GET)
-     - `src/app/api/payments/[id]/attach/route.ts` (POST)
-     - `src/app/api/payments/[id]/confirm/route.ts` (POST)
-     - `src/app/api/payments/[id]/refund/route.ts` (POST)
-     - `src/app/api/payments/[id]/release/route.ts` (POST)
-     - `src/app/api/payments/connect/route.ts` (GET and POST)
-     - `src/app/api/payments/webhook/route.ts` (POST)
-     - `src/app/api/payouts/route.ts` (GET)
-   - In each route, checks payment provider availability before any database write and catches `PaymentsUnavailableError` to return HTTP 503 with `{ error: { code: 'PAYMENTS_UNAVAILABLE', message: 'Payments are not available yet.' } }`.
-   - Webhook route rejects with 503 if `RAZORPAY_WEBHOOK_SECRET` is missing.
-   - Verified that no database write occurs before the provider is called in any route.
+2. **Google OAuth Flow:**
+   - Added "Continue with Google" button with Google SVG icon and `#365cf5` design tokens to both `login/page.tsx` and `register/page.tsx`.
+   - On `/register`, preserves the selected role (`client` or `consultant`) in the OAuth redirect URL: `${getAppUrl()}/api/auth/callback?role=...&next=...`.
+   - In `/api/auth/callback` (and `/auth/callback`), after `exchangeCodeForSession(code)` succeeds, it calls `AuthService.ensureUserRecords`, updates `last_login_at`, and safely redirects to `resolvePostLoginPath(role, next)` preventing open redirects.
 
-3. **Header Labels (`src/components/layout/header.tsx`):**
-   - Renamed navigation links in desktop and mobile drawer:
-     - `"Community Forum"` -> `"Forum"`
-     - `"Browse Freelancers"` -> `"Consultants"`
-     - `"Browse Jobs"` -> `"Jobs"`
+3. **Dedicated Server OTP API Endpoints:**
+   - Created `POST /api/auth/otp/request`:
+     - Validates `{ channel: 'email', email, role? }` or `{ channel: 'phone', phone, role? }`.
+     - Strictly enforces feature flag: blocks phone OTP requests with `403 Forbidden` if `NEXT_PUBLIC_ENABLE_PHONE_OTP !== 'true'`.
+     - Calls `supabase.auth.signInWithOtp` and maps rate-limit errors to `RateLimitError` (HTTP 429).
+   - Created `POST /api/auth/otp/verify`:
+     - Validates `{ channel, identifier, token (6 digits), role? }`.
+     - Calls `supabase.auth.verifyOtp`, runs `AuthService.ensureUserRecords`, updates `last_login_at`, and returns `{ success: true, data: { user: { id, email, role } } }`.
+     - Sets session cookies server-side with hardened attributes via `@supabase/ssr`.
+   - In `login/page.tsx`:
+     - Added mode switcher: **Password** | **Email Code** (and **Phone Code** when enabled).
+     - Connected 2-step OTP flows directly to the server endpoints with 60s cooldown timers.
 
-4. **Privacy Page (`src/app/privacy/page.tsx`):**
-   - Added exact sentence under "Commitment to Confidentiality":
-     `"We use Vercel Web Analytics to count page views. It does not use cookies to identify visitors."`
-
-5. **Unit & Integration Tests (`src/tests/payments-fail-closed.test.ts`):**
-   - Added 15 comprehensive unit tests covering:
-     - Production without credentials throws `PaymentsUnavailableError`.
-     - Development without flag throws `PaymentsUnavailableError`.
-     - Development with flag uses `MockPaymentProvider`.
-     - All payment routes return 503 with `{ error: { code: 'PAYMENTS_UNAVAILABLE', message: 'Payments are not available yet.' } }` in production without credentials.
-     - Webhook route returns 503 when webhook secret is missing.
-   - All 980 tests across 46 test files pass.
-
+4. **Verification & Diagnostics:**
+   - `npx tsc --noEmit`: 0 errors.
+   - `npm run lint`: 0 errors, 0 warnings.
+   - `npx vitest run`: 48 test files passed, 1,008 tests passed (+22 unit tests in `src/tests/auth-enhancements.test.ts`).
+   - Turbopack vs Webpack:
+     - `npm run build` (Turbopack): Windows sandbox child process spawn issue on PostCSS worker IPC (`node process exited before we could connect to it`).
+     - `npx next build --webpack`: Successfully compiled all 63 static and dynamic routes with zero errors.

@@ -9,12 +9,16 @@ import { Alert } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { UserPlus, Briefcase, Users } from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
+import { GoogleIcon } from '@/components/icons/google-icon';
+import { createClient } from '@/lib/supabase/client';
+import { getAppUrl } from '@/lib/auth/app-url';
 import { getRegisterFieldErrors } from '@/lib/validations/auth.schemas';
 import type { RegisterFormData } from '@/lib/validations/auth.schemas';
 
 export default function RegisterPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [formData, setFormData] = useState<RegisterFormData>({
@@ -72,6 +76,27 @@ export default function RegisterPage() {
       setError(err instanceof Error ? err.message : 'An error occurred during registration');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSignUp = async () => {
+    try {
+      setIsGoogleLoading(true);
+      setError('');
+      const supabase = createClient();
+      const role = formData.role || 'consultant';
+      const targetNext = role === 'client' ? '/dashboard/client' : '/dashboard/consultant';
+      const redirectTo = `${getAppUrl()}/api/auth/callback?role=${encodeURIComponent(role)}&next=${encodeURIComponent(targetNext)}`;
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo,
+        },
+      });
+      if (error) throw error;
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Google sign-up failed');
+      setIsGoogleLoading(false);
     }
   };
 
@@ -143,6 +168,32 @@ export default function RegisterPage() {
                   <div className="font-semibold text-slate-900">Find Work</div>
                   <div className="text-xs text-slate-600">Offer SAP CPI expertise</div>
                 </button>
+              </div>
+            </div>
+
+            {/* Google OAuth Button */}
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              onClick={handleGoogleSignUp}
+              isLoading={isGoogleLoading}
+              disabled={isLoading || isGoogleLoading}
+              leftIcon={<GoogleIcon className="w-5 h-5" />}
+              className="w-full border-slate-300 text-slate-700 hover:bg-slate-50 hover:text-slate-900 font-medium"
+            >
+              Continue with Google
+            </Button>
+
+            {/* Divider */}
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-200" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-white px-3 text-slate-500 font-medium">
+                  Or register with email
+                </span>
               </div>
             </div>
 

@@ -1573,3 +1573,136 @@ Production registration remains `REVIEW_REQUIRED` because no authorized producti
 
 Publication status: **PUSHED; DEPLOYMENT UNVERIFIED**.
 Registration status: **REVIEW_REQUIRED** pending provider deployment confirmation and an authorized end-to-end production registration procedure.
+
+## 2026-11-23 — Batch 3a: Dashboard 404 & Auth Bug Fixes
+
+Status: `REVIEW_REQUIRED` (Local implementation complete; no git push, no live DB migrations).
+
+### Changes Implemented:
+
+1. **Dashboard 404 & Onboarding State:**
+   - `src/app/dashboard/consultant/page.tsx`:
+     - Handled missing `consultantProfile` row as a normal onboarding state; avoids calling `ClientProposalService.getProposalsByConsultant` when no consultant profile exists (which returned 404 `NotFoundError` / "Resource not found.").
+     - Rendered a clean onboarding card with CTA ("Complete your consultant profile") linking to `/profile`.
+     - Filtered out spurious "Resource not found." errors from displaying in error alert banner.
+   - `src/app/dashboard/client/page.tsx`:
+     - Rendered clean onboarding card for incomplete company/client profiles (`!profile?.clientProfile || !profile?.company`).
+     - Added resilient `.catch(() => [])` to messaging conversation loading.
+   - `src/components/layout/dashboard-shell.tsx`, `consultant/page.tsx`, `client/page.tsx`:
+     - Updated footer sidebar navigation: "Help center" points to `/contact` and "Settings" points to `/profile`.
+
+2. **Auth & Routing Fixes:**
+   - `src/app/dashboard/page.tsx`:
+     - Created root `/dashboard` server component that checks user role and redirects authenticated visitors to `/dashboard/client`, `/dashboard/consultant`, or `/admin` (and unauthenticated visitors to `/login?next=/dashboard`), eliminating the 404 on `/dashboard`.
+   - `src/app/api/auth/callback/route.ts`:
+     - Added support for PKCE / OAuth authorization code via `supabase.auth.exchangeCodeForSession(code)`.
+     - Extracted `safeCallbackRedirect` and `DEFAULT_REDIRECT` into `src/lib/auth/callback-redirect.ts` to satisfy Next.js route export typing constraints.
+     - Enforced canonical production redirect base `https://www.cpilancers.com` when running in production environment.
+   - `src/app/(auth)/reset-password/page.tsx` & `src/app/auth/reset-password/page.tsx`:
+     - Created complete password reset page with validation, submission to `POST /api/auth/reset-password?action=reset`, and clear feedback.
+   - `src/app/contact/page.tsx`:
+     - Created `/contact` page with support channels, response time SLA, and forum links.
+   - `src/app/api/messages/conversations/[conversationId]/route.ts`:
+     - Cleaned up obsolete route exports (`GET_MESSAGES`, `POST_MESSAGES`) that conflicted with Next.js App Router route constraints.
+
+3. **Rate-Limit UX:**
+   - `src/lib/errors.ts`:
+     - Added `RateLimitError` class (HTTP 429, code `RATE_LIMITED`).
+     - Added `RATE_LIMITED` to `PUBLIC_MESSAGES` and handled in `formatErrorResponse`.
+   - `src/services/auth.service.ts`:
+     - Mapped Supabase's `over_email_send_rate_limit`, `email_rate_limit_exceeded`, and status 429 in `register()`, `resendVerificationEmail()`, and `sendPasswordResetEmail()` to `RateLimitError` with the friendly message: *"Too many verification emails requested. Please wait a few minutes before trying again."*.
+   - `src/app/(auth)/login/page.tsx`:
+     - Mapped server error response in password reset trigger to display the friendly rate-limit message.
+
+4. **Security & Regression Controls:**
+   - Preserved origin evaluation rules in `proxy.ts`.
+   - Preserved open-redirect protection in `safeCallbackRedirect`.
+   - Did not touch migration `00018` or `forum-security` branch.
+
+### Test & Build Verification:
+- `npx tsc --noEmit`: Passed with 0 errors.
+- `npm run lint`: Passed with 0 errors, 0 warnings.
+- `npx vitest run`: Passed all 47 test files (986 tests, 0 failures), including new unit tests in `src/tests/auth-dashboard-fixes.test.ts` and `src/tests/auth-resend-verification.test.ts`.
+- `npx next build --webpack`: Successfully compiled all 59 static and dynamic routes.
+
+
+## 2026-11-23 — Batch 3b: Auth Enhancements (Google OAuth, Email OTP, Phone OTP)
+
+### Status: `REVIEW_REQUIRED` (Local Implementation Complete)
+
+### Changes Implemented:
+
+1. **Feature Flag (`NEXT_PUBLIC_ENABLE_PHONE_OTP`):**
+   - In `src/config/env.ts`: Added `NEXT_PUBLIC_ENABLE_PHONE_OTP` (schema defaults to `'false'`, transformed to boolean). Phone OTP remains completely hidden in the UI until an SMS provider is configured in Supabase.
+
+2. **Zod Validation Schemas:**
+   - In `src/lib/validations/auth.schemas.ts`:
+     - Added `otpTokenSchema` enforcing exact 6-digit verification codes (`^\d{6}$`).
+     - Added `phoneSchema` validating international E.164 phone numbers (`^\+[1-9]\d{1,14}$`).
+     - Added `emailOtpSendSchema` and `emailOtpVerifySchema`.
+     - Added `phoneOtpSendSchema` and `phoneOtpVerifySchema`.
+
+3. **Client-Safe App URL Helper:**
+   - In `src/lib/auth/app-url.ts`: Extracted `getAppUrl()` into a standalone helper so client components (`login/page.tsx`, `register/page.tsx`) can construct redirect URLs without pulling server packages into client bundles. Re-exported from `src/services/auth.service.ts` for full backward compatibility.
+
+4. **PKCE, Callback Routes, and Auto-Provisioning:**
+   - Created `src/lib/auth/callback-handler.ts`:
+     - Handles PKCE code exchange (`exchangeCodeForSession`).
+     - Enforces open-redirect validation using `safeCallbackRedirect`.
+     - In production (`VERCEL_ENV=production`), enforces canonical redirect base `https://www.cpilancers.com`.
+     - Provisions first-time OAuth users in `public.users` and `public.profiles` with selected role (`client` or `consultant`) to prevent missing-profile 404s.
+   - Created `src/app/auth/callback/route.ts` and updated `src/app/api/auth/callback/route.ts` to delegate to the shared handler.
+   - Created `src/app/api/auth/sync-session/route.ts` to sync browser OTP sessions and provision first-time OTP users.
+
+5. **UI Implementation:**
+   - In `src/components/icons/google-icon.tsx`: Created standard multi-color Google SVG icon.
+   - In `src/app/(auth)/register/page.tsx`:
+     - Added "Continue with Google" button styled with `#365cf5` design tokens.
+     - Preserves user-selected role (`client` or `consultant`) in the OAuth redirect URL.
+   - In `src/app/(auth)/login/page.tsx`:
+     - Added "Continue with Google" button.
+     - Added mode switcher tabs: **Password** | **Email Code** (and **Phone Code** when `NEXT_PUBLIC_ENABLE_PHONE_OTP === 'true'`).
+     - Implemented 2-step Email OTP flow (email input -> 6-digit OTP input with 60s cooldown timer and resend button).
+     - Implemented 2-step Phone OTP flow with E.164 validation, 60s cooldown timer, and resend button.
+     - Mapped Supabase rate limits (429, `over_email_send_rate_limit`, `email_rate_limit_exceeded`, `over_sms_send_rate_limit`, `sms_rate_limit_exceeded`) to user-friendly messages.
+
+6. **Test & Build Verification:**
+   - `npx tsc --noEmit`: Passed with 0 errors.
+   - `npm run lint`: Passed with 0 errors, 0 warnings.
+   - `npx vitest run`: Passed all 48 test files (1,002 tests, 0 failures), including 16 new unit tests in `src/tests/auth-enhancements.test.ts`.
+   - `npx next build --webpack`: Successfully compiled all 61 static and dynamic routes.
+
+
+## 2026-11-23 — Batch 3c: Auth Architecture Refinement (Idempotent Provisioning, Server OTP Endpoints, Role Allowlist)
+
+### Status: `REVIEW_REQUIRED` (Local Implementation Complete)
+
+### Changes Implemented:
+
+1. **Idempotent User Provisioning (`AuthService.ensureUserRecords`):**
+   - Implemented `AuthService.ensureUserRecords(authUser, requestedRole?)` using `createAdminClient()`.
+   - Strict role security: Permits only `'client'` | `'consultant'` (defaults to `'client'`). Rejects `'admin'` unconditionally from query parameters, request bodies, and OAuth metadata.
+   - Idempotently creates `public.users` and `public.profiles` rows if missing, derives user names from metadata/email, marks `status: 'active'`, and sets `is_email_verified: true` for Google OAuth and verified Email OTP.
+   - Implemented `AuthService.updateLastLogin(userId)` to record login timestamps.
+
+2. **Dedicated Server OTP Endpoints (`/api/auth/otp/*`):**
+   - `POST /api/auth/otp/request`: Validates input via Zod, checks `NEXT_PUBLIC_ENABLE_PHONE_OTP` feature flag (rejecting phone requests with 403 when disabled), triggers `signInWithOtp`, and maps rate-limit errors to `RateLimitError` (HTTP 429).
+   - `POST /api/auth/otp/verify`: Validates channel, identifier, and 6-digit token via Zod, verifies OTP with Supabase, calls `AuthService.ensureUserRecords`, updates `last_login_at`, and returns `{ success: true, data: { user: { id, email, role } } }`. Sets hardened cookies via `@supabase/ssr`.
+
+3. **Google OAuth & Redirects:**
+   - Both `/login` and `/register` include "Continue with Google" buttons styled with `#365cf5` design tokens and standard Google SVG icons.
+   - `/register` cleanly passes the user-selected role into the OAuth flow (`role=client` or `role=consultant`).
+   - Callback routes (`/api/auth/callback` and `/auth/callback`) exchange PKCE authorization code, call `ensureUserRecords`, update `last_login_at`, and redirect safely to `resolvePostLoginPath(role, next)` while rejecting open-redirect attacks.
+
+4. **UI Integration (`login/page.tsx`):**
+   - Implemented mode switcher: **Password** | **Email Code** (and **Phone Code** when feature flag is enabled).
+   - Connected 2-step OTP forms to server endpoints `/api/auth/otp/request` and `/api/auth/otp/verify`.
+   - Included 60-second cooldown timer for resending OTP codes.
+
+5. **Test & Build Verification:**
+   - `npx tsc --noEmit`: 0 errors.
+   - `npm run lint`: 0 errors, 0 warnings.
+   - `npx vitest run`: Passed all 48 test files (1,008 tests passed, 0 failures), including 22 unit & integration tests in `src/tests/auth-enhancements.test.ts`.
+   - Turbopack vs Webpack:
+     - `npm run build` (Turbopack): Fails on Windows local environment with child process spawn failure in PostCSS worker IPC (`node process exited before we could connect to it`).
+     - `npx next build --webpack`: Passes with 0 errors, compiling all 63 routes successfully.

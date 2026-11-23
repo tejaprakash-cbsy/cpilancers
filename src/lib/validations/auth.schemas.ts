@@ -100,3 +100,105 @@ export const resetPasswordSchema = z
   });
 
 export type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>;
+
+/**
+ * Phone E.164 format validation (+ followed by 1 to 14 digits)
+ */
+export const phoneSchema = z
+  .string()
+  .trim()
+  .regex(/^\+[1-9]\d{1,14}$/, 'Please enter a valid phone number with country code (e.g. +1234567890, +919876543210)');
+
+/**
+ * 6-digit verification code schema
+ */
+export const otpTokenSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{6}$/, 'Verification code must be 6 digits');
+
+/**
+ * Email OTP Schemas
+ */
+export const emailOtpSendSchema = z.object({
+  email: emailSchema,
+});
+
+export type EmailOtpSendFormData = z.infer<typeof emailOtpSendSchema>;
+
+export const emailOtpVerifySchema = z.object({
+  email: emailSchema,
+  token: otpTokenSchema,
+});
+
+export type EmailOtpVerifyFormData = z.infer<typeof emailOtpVerifySchema>;
+
+/**
+ * Phone OTP Schemas
+ */
+export const phoneOtpSendSchema = z.object({
+  phone: phoneSchema,
+});
+
+export type PhoneOtpSendFormData = z.infer<typeof phoneOtpSendSchema>;
+
+export const phoneOtpVerifySchema = z.object({
+  phone: phoneSchema,
+  token: otpTokenSchema,
+});
+
+export type PhoneOtpVerifyFormData = z.infer<typeof phoneOtpVerifySchema>;
+
+/**
+ * OTP Request Schema (Server API)
+ */
+export const otpRequestSchema = z.discriminatedUnion('channel', [
+  z.object({
+    channel: z.literal('email'),
+    email: emailSchema,
+    role: z.enum(['client', 'consultant']).optional(),
+  }),
+  z.object({
+    channel: z.literal('phone'),
+    phone: phoneSchema,
+    role: z.enum(['client', 'consultant']).optional(),
+  }),
+]);
+
+export type OtpRequestData = z.infer<typeof otpRequestSchema>;
+
+/**
+ * OTP Verify Schema (Server API)
+ */
+export const otpVerifySchema = z
+  .object({
+    channel: z.enum(['email', 'phone']),
+    identifier: z.string().trim().min(1, 'Identifier is required'),
+    token: otpTokenSchema,
+    role: z.enum(['client', 'consultant']).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.channel === 'email') {
+      const emailResult = emailSchema.safeParse(data.identifier);
+      if (!emailResult.success) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Please enter a valid email address',
+          path: ['identifier'],
+        });
+      }
+    } else if (data.channel === 'phone') {
+      const phoneResult = phoneSchema.safeParse(data.identifier);
+      if (!phoneResult.success) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Please enter a valid phone number with country code (e.g. +1234567890)',
+          path: ['identifier'],
+        });
+      }
+    }
+  });
+
+export type OtpVerifyData = z.infer<typeof otpVerifySchema>;
+
+

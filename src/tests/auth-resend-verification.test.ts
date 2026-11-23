@@ -65,6 +65,24 @@ describe('POST /api/auth/resend-verification route', () => {
     });
   });
 
+  it('returns 429 when rate limit error is thrown', async () => {
+    const { RateLimitError } = await import('@/lib/errors');
+    mockResendVerificationEmail.mockRejectedValue(
+      new RateLimitError('Too many verification emails requested. Please wait a few minutes before trying again.')
+    );
+
+    const req = resendRequest({ email: 'user@example.com' });
+    const res = await POST(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(429);
+    expect(json.success).toBe(false);
+    expect(json.error.code).toBe('RATE_LIMITED');
+    expect(json.error.message).toBe(
+      'Too many verification emails requested. Please wait a few minutes before trying again.'
+    );
+  });
+
   it('returns 400 when email format is invalid', async () => {
     const req = resendRequest({ email: 'not-an-email' });
     const res = await POST(req);

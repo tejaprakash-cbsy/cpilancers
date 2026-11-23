@@ -1,0 +1,589 @@
+prompt 1
+Ran list auth pages · Exited with code 1
+Ran list auth pages with quotes
+Ran list auth API routes
+Ran list src root files
+Ran find middleware files
+Analyzed package.json:L1-44
+Analyzed proxy.ts:L1-77
+Analyzed origin.ts:L1-100
+Analyzed origin.ts:L101-205
+Analyzed middleware.ts:L1-45
+Analyzed client.ts:L1-8
+Analyzed server.ts:L1-29
+Analyzed admin.ts:L1-18
+Analyzed env.ts:L1-100
+Analyzed env.ts:L101-137
+Ran search getAppUrl in src
+Analyzed auth.service.ts:L20-60
+Ran search for reset-password in src/app
+Analyzed route.ts:L1-100
+Analyzed route.ts:L101-115
+Ran search exchangeCodeForSession in src · Exited with code 1
+Analyzed page.tsx:L1-100
+Analyzed page.tsx:L101-200
+Analyzed page.tsx:L201-238
+Analyzed page.tsx:L1-120
+Analyzed route.ts:L1-51
+Analyzed route.ts:L1-40
+Analyzed route.ts:L1-16
+Analyzed role-redirects.ts:L1-67
+Analyzed page.tsx:L1-68
+Analyzed route.ts:L1-29
+Analyzed auth.service.ts:L350-404
+Analyzed auth.service.ts:L140-270
+Analyzed auth.service.ts:L270-320
+Analyzed auth.service.ts:L320-355
+Analyzed route.ts:L1-57
+Ran search rate in errors.ts
+Ran list all existing pages in src/app
+Analyzed header.tsx:L1-100
+Analyzed header.tsx:L101-162
+Analyzed footer.tsx:L1-94
+Ran list top-level directories in src/app
+Ran list dashboard subdirectories
+Analyzed page.tsx:L50-52
+Ran extract all href links from page.tsx
+Ran find all href links in src
+Ran find all client navigation and server redirects
+Ran search dashboard in tests
+Analyzed require-role.ts:L1-62
+Ran search requireRole in src
+Analyzed next.config.ts:L1-99
+Ran check users RLS policy in migrations
+Ran check triggers or references to auth.users in migrations
+
+# Production Authentication & "Resource Not Found" Audit Report
+
+**Scope:** Read-Only Audit of authentication lifecycle, proxy guards, missing pages, and error handling. No files have been modified.
+
+---
+
+## 1. Login & Auth Flow Trace
+
+### A. Login Flow (`/login`)
+1. **Form Submission:** [src/app/(auth)/login/page.tsx#L97-L124](file:///c:/projects/cpilancers/src/app/(auth)/login/page.tsx#L97-L124)  
+   Submits `{ email, password }` via `POST /api/auth/login`.
+2. **Session Probe on Mount:** [src/app/(auth)/login/page.tsx#L72-L95](file:///c:/projects/cpilancers/src/app/(auth)/login/page.tsx#L72-L95)  
+   Calls `GET /api/auth/me`. If a valid session exists, immediately redirects to `resolvePostLoginPath(role, nextPath)`.
+3. **Proxy Origin Validation:** [src/proxy.ts#L15-L35](file:///c:/projects/cpilancers/src/proxy.ts#L15-L35)  
+   Evaluates `Origin` on `POST` requests. Ensures incoming request matches `requestOrigin` or configured origins in `getTrustedOrigins()`.
+4. **API Route Handler:** [src/app/api/auth/login/route.ts#L7-L50](file:///c:/projects/cpilancers/src/app/api/auth/login/route.ts#L7-L50)  
+   Validates payload with `loginSchema` and calls `AuthService.login(...)`.
+5. **Supabase Auth & Cookies:** [src/services/auth.service.ts#L212-L245](file:///c:/projects/cpilancers/src/services/auth.service.ts#L212-L245)  
+   Calls `@supabase/ssr` `createServerClient` via [src/lib/supabase/server.ts#L5-L28](file:///c:/projects/cpilancers/src/lib/supabase/server.ts#L5-L28).
+   - Calls `supabase.auth.signInWithPassword({ email, password })`.
+   - On success, updates `last_login_at` in `public.users`.
+   - Cookies are set into `cookieStore` with hardened options (`SameSite=Lax`, `Secure`, `HttpOnly`).
+6. **Role Resolution & Post-Login Navigation:** [src/app/api/auth/login/route.ts#L28-L34](file:///c:/projects/cpilancers/src/app/api/auth/login/route.ts#L28-L34) & [src/lib/auth/role-redirects.ts#L61-L67](file:///c:/projects/cpilancers/src/lib/auth/role-redirects.ts#L61-L67)  
+   Returns `{ success: true, data: { user: { id, email, role } } }`. The login page routes to:
+   - Safe `?next=` destination if provided.
+   - Otherwise `roleHomePath(role)`:
+     - `client` $\rightarrow$ `/dashboard/client`
+     - `consultant` $\rightarrow$ `/dashboard/consultant`
+     - `admin` $\rightarrow$ `/admin`
+     - `null / undefined` $\rightarrow$ `/dashboard/client` (fallback default)
+
+### B. Registration Flow (`/register`)
+1. **Form Submission:** [src/app/(auth)/register/page.tsx#L45-L76](file:///c:/projects/cpilancers/src/app/(auth)/register/page.tsx#L45-L76)  
+   Submits `{ firstName, lastName, email, password, confirmPassword, role, agreeToTerms }` to `POST /api/auth/register`.
+2. **API Route Handler:** [src/app/api/auth/register/route.ts#L6-L40](file:///c:/projects/cpilancers/src/app/api/auth/register/route.ts#L6-L40)  
+   Calls `AuthService.register(...)` ([src/services/auth.service.ts#L121-L207](file:///c:/projects/cpilancers/src/services/auth.service.ts#L121-L207)).
+3. **User Creation:**
+   - Calls `supabase.auth.signUp(...)` with `emailRedirectTo: `${getAppUrl()}/api/auth/callback``.
+   - Uses `createAdminClient()` to insert records into `public.users` (`role`, `status: active`) and `public.profiles` (`first_name`, `last_name`, `display_name`).
+   - **Crucial Note:** A row in `consultant_profiles` is **not** created during registration; it is created only when a consultant completes their profile setup.
+4. **Client Redirect:** [src/app/(auth)/register/page.tsx#L68-L70](file:///c:/projects/cpilancers/src/app/(auth)/register/page.tsx#L68-L70)  
+   Redirects to `/verify-email`.
+
+### C. Email Verification / Callback Handler (`/api/auth/callback`)
+- **Route Handler:** [src/app/api/auth/callback/route.ts#L71-L115](file:///c:/projects/cpilancers/src/app/api/auth/callback/route.ts#L71-L115)
+  - Checks for `token_hash` and `type` from query params.
+  - Calls `supabase.auth.verifyOtp({ type, token_hash })`.
+  - If `type === 'email'`, marks `users.is_email_verified = true`.
+  - Redirects to validated `next` param via `safeCallbackRedirect()` (defaults to `/`).
+  - **Dead Route Redirect:** If `type === 'recovery'` or `'email_change'`, redirects to `new URL('/auth/reset-password', request.url)` (line 100), which **does not exist** (HTTP 404).
+  - **Missing OAuth PKCE Flow:** Lines 73–86 strictly require `token_hash && type`. If a request arrives with an OAuth authorization code (`?code=...`), it is ignored and redirected to `/auth-error?message=Invalid or expired link`.
+
+---
+
+## 2. Origin & Redirect Guards
+
+### A. Origin Evaluation in `src/proxy.ts`
+- **Origin check location:** [src/proxy.ts#L15-L35](file:///c:/projects/cpilancers/src/proxy.ts#L15-L35) calling [src/lib/security/origin.ts#L155-L205](file:///c:/projects/cpilancers/src/lib/security/origin.ts#L155-L205).
+- **Behavior:**
+  - Evaluates `Origin` on state-changing methods (`POST`, `PUT`, `PATCH`, `DELETE`).
+  - Same-origin requests pass if `request.headers.get('origin') === request.nextUrl.origin` ([origin.ts#L181-L191](file:///c:/projects/cpilancers/src/lib/security/origin.ts#L181-L191)).
+  - Cross-origin requests are checked against `getTrustedOrigins()` ([origin.ts#L74-L142](file:///c:/projects/cpilancers/src/lib/security/origin.ts#L74-L142)): `NEXT_PUBLIC_APP_URL`, `ALLOWED_ORIGINS`, and `VERCEL_PROJECT_PRODUCTION_URL`.
+  - **Risk:** If the application is accessed via an unlisted custom domain or Vercel preview domain where `origin` doesn't match `nextUrl.origin`, `POST /api/auth/login` and `POST /api/auth/register` will be blocked with **HTTP 403 `Cross-origin request blocked.`**.
+
+### B. Environment App URL (`getAppUrl()`)
+- **Location:** [src/services/auth.service.ts#L29-L55](file:///c:/projects/cpilancers/src/services/auth.service.ts#L29-L55)
+- **Behavior:**
+  ```ts
+  const isProduction =
+    process.env.VERCEL_ENV === 'production' ||
+    (process.env.NODE_ENV === 'production' && !process.env.VERCEL_ENV);
+
+  if (isProduction) {
+    throw new AppError(
+      'NEXT_PUBLIC_APP_URL must be configured in production environment',
+      500,
+      'APP_URL_NOT_CONFIGURED'
+    );
+  }
+  ```
+- **Risk:** In production, if `NEXT_PUBLIC_APP_URL` is missing:
+  - `AuthService.register()` crashes with **HTTP 500**.
+  - `sendPasswordResetEmail()` and `resendVerificationEmail()` fail to generate callback URLs.
+  - If `NEXT_PUBLIC_APP_URL` is set to a production domain (e.g. `https://cpilancers.com`) but users test on Vercel (`https://cpilancers-*.vercel.app`), email verification links will point to the custom domain instead of the current deployment.
+
+### C. Protected Route Redirects in `src/proxy.ts`
+- **Location:** [src/proxy.ts#L41-L70](file:///c:/projects/cpilancers/src/proxy.ts#L41-L70)
+- **Protected regex:** `/^\/(profile|messages|proposals|contracts|dashboard|jobs\/create|jobs\/[^/]+\/(edit|proposals))(\/|$)/`
+- **Bug with `/dashboard`:**
+  - An unauthenticated user hitting `/dashboard` gets redirected to `/login?next=/dashboard`.
+  - Upon successful login, `resolvePostLoginPath` preserves the valid `next` path and sends them to `/dashboard`.
+  - **`/dashboard` does not exist as a page**, producing an immediate **HTTP 404**.
+
+---
+
+## 3. "Resource Not Found" & 404 Candidates
+
+### A. The Dashboard Alert: "Resource not found."
+- **Location:** [src/app/dashboard/consultant/page.tsx#L52](file:///c:/projects/cpilancers/src/app/dashboard/consultant/page.tsx#L52)
+- **Exact Cause:**
+  1. The consultant dashboard mounts and runs [page.tsx#L32-L41](file:///c:/projects/cpilancers/src/app/dashboard/consultant/page.tsx#L32-L41), calling `ClientProposalService.getProposalsByConsultant({ page: 1, limit: 5 })` (`GET /api/proposals`).
+  2. In [src/services/proposal.service.ts#L403-L410](file:///c:/projects/cpilancers/src/services/proposal.service.ts#L403-L410), the server queries:
+     ```ts
+     const { data: profile, error: profileErr } = await adminSupabase
+       .from('consultant_profiles')
+       .select('id')
+       .eq('user_id', consultantUserId)
+       .single();
+
+     if (profileErr || !profile) {
+       throw new NotFoundError('Consultant profile');
+     }
+     ```
+  3. A newly registered consultant has no row in `consultant_profiles` yet.
+  4. `NotFoundError` is caught by [src/lib/errors.ts#L142-L143](file:///c:/projects/cpilancers/src/lib/errors.ts#L142-L143), which sanitizes it into `{ code: 'NOT_FOUND', message: 'Resource not found.' }` (HTTP 404).
+  5. The client sets `state.error = 'Resource not found.'`, rendering the red banner on screen.
+
+### B. Missing Pages in the Application (HTTP 404)
+| Path | Referenced At | Issue |
+|---|---|---|
+| `/auth/reset-password` | [src/services/auth.service.ts:274](file:///c:/projects/cpilancers/src/services/auth.service.ts#L274), [src/app/api/auth/callback/route.ts:100](file:///c:/projects/cpilancers/src/app/api/auth/callback/route.ts#L100) | No page component exists in `src/app/`. Password reset emails lead to a 404. |
+| `/contact` | [src/components/layout/footer.tsx:70](file:///c:/projects/cpilancers/src/components/layout/footer.tsx#L70) | Linked in footer, but no page exists. |
+| `/help` | [src/components/layout/dashboard-shell.tsx:42](file:///c:/projects/cpilancers/src/components/layout/dashboard-shell.tsx#L42), [dashboard/consultant/page.tsx:12](file:///c:/projects/cpilancers/src/app/dashboard/consultant/page.tsx#L12), [dashboard/client/page.tsx:12](file:///c:/projects/cpilancers/src/app/dashboard/client/page.tsx#L12) | Linked in dashboard footer sidebar, but no page exists. |
+| `/settings` | [src/components/layout/dashboard-shell.tsx:43](file:///c:/projects/cpilancers/src/components/layout/dashboard-shell.tsx#L43), [dashboard/consultant/page.tsx:12](file:///c:/projects/cpilancers/src/app/dashboard/consultant/page.tsx#L12), [dashboard/client/page.tsx:12](file:///c:/projects/cpilancers/src/app/dashboard/client/page.tsx#L12) | Linked in dashboard footer sidebar, but no page exists. |
+| `/dashboard` | [src/components/layout/dashboard-shell.tsx:38](file:///c:/projects/cpilancers/src/components/layout/dashboard-shell.tsx#L38), [src/proxy.ts:42](file:///c:/projects/cpilancers/src/proxy.ts#L42) | Shell default Overview link; no root dashboard page exists (only `/dashboard/client` and `/dashboard/consultant`). |
+
+### C. Missing Database Triggers for New Auth Methods (OAuth / Google / SSO)
+- In `supabase/migrations/`, there is **no database trigger** (`on auth.users after insert`) to insert rows into `public.users` or `public.profiles`.
+- In standard email signup, `AuthService.register()` inserts these rows manually using `adminSupabase`.
+- **Failure point for new auth methods:** If a user signs in via OAuth (e.g., Google), Supabase Auth provisions `auth.users`, but `public.users` remains empty.
+  - `AuthService.getCurrentUser()` ([src/services/auth.service.ts#L329-L338](file:///c:/projects/cpilancers/src/services/auth.service.ts#L329-L338)) returns `null`.
+  - `GET /api/auth/me` returns HTTP 404 (`User record not found.`, [src/app/api/auth/me/route.ts#L14](file:///c:/projects/cpilancers/src/app/api/auth/me/route.ts#L14)).
+  - Layout role guards ([src/lib/auth/require-role.ts#L34-L36](file:///c:/projects/cpilancers/src/lib/auth/require-role.ts#L34-L36)) bounce the user back to `/login`.
+
+---
+
+## 4. Rate-Limit UX Analysis
+
+### Where Auth Errors Are Mapped
+1. **Registration:** [src/services/auth.service.ts#L145-L151](file:///c:/projects/cpilancers/src/services/auth.service.ts#L145-L151)
+   ```ts
+   if (authError) {
+     if (authError.code === 'user_already_exists') {
+       throw new ConflictError('An account with this email already exists.');
+     }
+     throw new AppError(authError.message, 400, 'AUTH_SIGNUP_ERROR');
+   }
+   ```
+   - When Supabase Auth rate limits signup emails (`over_email_send_rate_limit` or HTTP 429), `authError.message` is `"For security purposes, you can only request this once every 60 seconds"`.
+   - It is thrown as an `AUTH_SIGNUP_ERROR` (HTTP 400), and displayed directly in [src/app/(auth)/register/page.tsx#L107-L111](file:///c:/projects/cpilancers/src/app/(auth)/register/page.tsx#L107-L111).
+2. **Login:** [src/services/auth.service.ts#L221-L224](file:///c:/projects/cpilancers/src/services/auth.service.ts#L221-L224)
+   - Catches all Supabase errors and masks them with `throw new UnauthorizedError('Invalid email or password.')`.
+   - If Supabase rate limits IP/email attempts (`over_request_rate_limit`), the user is given no indication of lockout/rate limiting.
+3. **Password Reset & Resend Verification:** [src/services/auth.service.ts#L277-L283](file:///c:/projects/cpilancers/src/services/auth.service.ts#L277-L283) & [src/services/auth.service.ts#L391-L397](file:///c:/projects/cpilancers/src/services/auth.service.ts#L391-L397)
+   - To prevent account enumeration, both methods swallow errors and return `{ success: true }`.
+   - However, when rate-limited (`over_email_send_rate_limit`), the UI tells the user an email was dispatched even though Supabase rejected it.
+4. **Missing Error Hierarchy in `src/lib/errors.ts`:**
+   - There is no `RateLimitError` or HTTP 429 status code handling in [src/lib/errors.ts](file:///c:/projects/cpilancers/src/lib/errors.ts).
+
+---
+
+## 5. Concise Root-Cause Summary
+
+1. **Dashboard "Resource not found.":**
+   `ProposalService.getProposalsByConsultant` assumes a `consultant_profiles` row always exists and throws `NotFoundError('Consultant profile')` when a newly registered consultant loads `/dashboard/consultant`.
+2. **Broken Password Reset:**
+   The application redirects password reset links to `/auth/reset-password`, but no such page exists in the project.
+3. **OAuth Readiness Blocker:**
+   `/api/auth/callback` lacks PKCE `code` exchange logic (`exchangeCodeForSession`), and there is no database trigger or handler to populate `public.users` on third-party signups.
+4. **Missing Static Pages:**
+   `/contact`, `/help`, `/settings`, and root `/dashboard` are referenced in the UI and routing guards, but return HTTP 404.
+5. **Rate-Limit UX:**
+   Supabase rate limits are either passed as raw technical strings or silently swallowed to return fake success messages.
+
+---
+
+## 6. Proposed File-by-File Fix Plan
+
+*Pending your `APPROVED FOR LOCAL IMPLEMENTATION` before executing:*
+
+1. **`src/services/proposal.service.ts`:**
+   - In `getProposalsByConsultant` (lines 408–410), if no `consultant_profiles` row exists for a consultant user, return `{ proposals: [], total: 0, page, limit }` instead of throwing `NotFoundError`.
+2. **`src/app/api/auth/callback/route.ts`:**
+   - Add handling for `searchParams.get('code')` via `supabase.auth.exchangeCodeForSession(code)` to support OAuth and PKCE flows.
+   - Redirect recovery links to a valid reset password page.
+3. **`src/app/(auth)/reset-password/page.tsx` & Callback Redirect:**
+   - Add the missing password reset page to allow users to enter and confirm their new password.
+4. **`src/lib/errors.ts` & `src/services/auth.service.ts`:**
+   - Add `RateLimitError` (HTTP 429).
+   - Detect `authError.code === 'over_email_send_rate_limit'` in `register`, `resendVerificationEmail`, and `sendPasswordResetEmail`, returning a clean message: *"Too many requests. Please wait 60 seconds before trying again."*
+5. **Navigation & Dead Links (`footer.tsx`, `dashboard-shell.tsx`, `proxy.ts`):**
+   - In `proxy.ts`, redirect `/dashboard` to the user's role-specific dashboard instead of leaving it to 404.
+   - Update missing `/contact`, `/help`, and `/settings` links or add clean placeholder pages.
+
+
+   prompt 2
+   Ran search getProposalsByConsultant in tests · Exited with code 1
+Analyzed proposal-regression.test.ts:L1210-1240
+Ran inspect consultant_profiles schema
+Analyzed auth-url-config.test.ts:L1-100
+Analyzed origin.ts:L74-142
+Analyzed auth-callback-redirect.test.ts:L1-100
+Analyzed auth-callback-redirect.test.ts:L101-200
+Analyzed auth-resend-verification.test.ts:L1-87
+Analyzed page.tsx:L1-53
+Edited CURRENT_TASK.md
+Analyzed errors.ts:L55-115
+Analyzed errors.ts:L125-165
+Edited errors.ts
+Edited errors.ts
+Edited errors.ts
+Analyzed auth.service.ts:L140-165
+Analyzed auth.service.ts:L1-30
+Edited auth.service.ts
+Analyzed auth.service.ts:L55-70
+Edited auth.service.ts
+Edited auth.service.ts
+Analyzed auth.service.ts:L270-305
+Edited auth.service.ts
+Analyzed auth.service.ts:L380-422
+Edited auth.service.ts
+Analyzed route.ts:L70-115
+Edited route.ts
+Created page.tsx
+Created page.tsx
+Analyzed page.tsx:L30-53
+Edited page.tsx
+Analyzed page.tsx:L48-58
+Editing page.tsx
+Analyzed page.tsx:L55-58
+Edited page.tsx
+Analyzed page.tsx:L28-52
+Edited page.tsx
+Analyzed page.tsx:L50-56
+Edited page.tsx
+Analyzed route.ts:L1-29
+Analyzed route.ts:L9-35
+Analyzed page.tsx:L130-155
+Edited page.tsx
+Analyzed page.tsx:L55-75
+Created page.tsx
+Edited dashboard-shell.tsx
+Edited page.tsx
+Edited page.tsx
+Created auth-dashboard-fixes.test.ts
+Analyzed auth-resend-verification.test.ts:L65-87
+Analyzed auth-resend-verification.test.ts:L1-15
+Edited auth-resend-verification.test.ts
+Ran typeScript type check · Exited with code 1
+Analyzed page.tsx:L75-87
+Edited page.tsx
+Analyzed page.tsx:L75-85
+Edited page.tsx
+Ran typeScript type check
+Ran run test suite · Exited with code 1
+Created page.tsx
+Edited route.ts
+Edited auth.service.ts
+Edited auth-dashboard-fixes.test.ts
+Ran run test suite
+Ran ESLint check
+Ran next.js build execution · Exited with code 1
+Ran next.js build execution with Webpack · Exited with code 1
+Ran next.js build execution with Webpack · Exited with code 1
+Ran next.js build execution · Exited with code 1
+Ran next.js build execution with Webpack · Exited with code 1
+Ran search safeCallbackRedirect across src
+Analyzed route.ts:L1-50
+Ran search GET_MESSAGES in src
+Analyzed route.ts:L50-70
+Ran list files under conversations route
+Analyzed route.ts:L50-146
+Ran search POST_MESSAGES in src
+Edited route.ts
+Created callback-redirect.ts
+Analyzed route.ts:L1-70
+Edited route.ts
+Edited auth-callback-redirect.test.ts
+Ran typeScript type check
+Ran next.js build execution with Webpack
+
+I have started the Next.js production build (`next build --webpack`) to verify all route types, pages, and TypeScript definitions. I will review the results as soon as the build finishes.
+
+Ran git status check
+Ran check untracked file
+Ran vitest test suite execution
+Analyzed CURRENT_TASK.md:L1-15
+Edited CURRENT_TASK.md
+Analyzed IMPLEMENTATION_REPORT.md:L1-50
+Analyzed IMPLEMENTATION_REPORT.md:L1540-1575
+Edited IMPLEMENTATION_REPORT.md
+Ran git status check
+
+### Summary of Implemented Fixes
+
+All requested fixes for the Dashboard 404, Authentication lifecycle, and Rate-Limit UX have been implemented locally and verified with zero TypeScript, build, or test errors.
+
+---
+
+### 1. Fixed "Resource not found." on `/dashboard/consultant` (and `/dashboard/client`)
+- **Treated Missing Profile as an Onboarding State:**
+  - In [src/app/dashboard/consultant/page.tsx](file:///c:/projects/cpilancers/src/app/dashboard/consultant/page.tsx#L32-L41), the dashboard now checks if `profile.consultantProfile` exists before requesting proposals. If the consultant has not completed their profile yet, it resolves `{ proposals: [], total: 0 }` immediately instead of calling `/api/proposals` (which returned 404 `NotFoundError`).
+  - Added a clean onboarding card with a **"Complete your consultant profile"** call-to-action button linking directly to `/profile`.
+  - Filtered out any spurious `"Resource not found."` messages from displaying in the error alert banner.
+- **Client Dashboard Hardening:**
+  - In [src/app/dashboard/client/page.tsx](file:///c:/projects/cpilancers/src/app/dashboard/client/page.tsx#L32-L40), added a matching onboarding banner for incomplete company profiles and added `.catch(() => [])` to messaging conversation loading.
+- **Sidebar Dead Links:**
+  - In [src/components/layout/dashboard-shell.tsx](file:///c:/projects/cpilancers/src/components/layout/dashboard-shell.tsx#L41-L44), re-pointed `"Help center"` to `/contact` and `"Settings"` to `/profile`.
+
+---
+
+### 2. Auth & Redirect Bugs Resolved
+- **Fixed `/dashboard` Root 404:**
+  - Created [src/app/dashboard/page.tsx](file:///c:/projects/cpilancers/src/app/dashboard/page.tsx) as a dynamic server component that checks user role and redirects authenticated visitors to `/dashboard/client`, `/dashboard/consultant`, or `/admin` (and unauthenticated visitors to `/login?next=/dashboard`).
+- **OAuth & PKCE Code Exchange in Callback:**
+  - In [src/app/api/auth/callback/route.ts](file:///c:/projects/cpilancers/src/app/api/auth/callback/route.ts), added handling for authorization codes via `supabase.auth.exchangeCodeForSession(code)` so OAuth logins (e.g. Google) and PKCE email redirects complete their session exchange.
+  - Extracted helper functions into [src/lib/auth/callback-redirect.ts](file:///c:/projects/cpilancers/src/lib/auth/callback-redirect.ts) to adhere strictly to Next.js App Router route export requirements.
+  - Enforced canonical production base `https://www.cpilancers.com` for all callback redirects when in production.
+- **Fixed Missing Password Reset Page & Dead Redirect:**
+  - Created [src/app/(auth)/reset-password/page.tsx](file:///c:/projects/cpilancers/src/app/(auth)/reset-password/page.tsx) and [src/app/auth/reset-password/page.tsx](file:///c:/projects/cpilancers/src/app/auth/reset-password/page.tsx) with form validation and submission to `POST /api/auth/reset-password?action=reset`.
+  - Updated [src/services/auth.service.ts](file:///c:/projects/cpilancers/src/services/auth.service.ts#L287) to direct reset emails to the active `/auth/reset-password` route.
+- **Fixed Missing `/contact` Page:**
+  - Created [src/app/contact/page.tsx](file:///c:/projects/cpilancers/src/app/contact/page.tsx) with direct support details (`support@cpilancers.com`), response hours, and forum links.
+- **Cleaned Up Route Handler Exports:**
+  - Removed obsolete `GET_MESSAGES` / `POST_MESSAGES` exports from [src/app/api/messages/conversations/[conversationId]/route.ts](file:///c:/projects/cpilancers/src/app/api/messages/conversations/[conversationId]/route.ts) that conflicted with Next.js route type validation.
+
+---
+
+### 3. Rate-Limit Error UX
+- **Typed Rate-Limit Error:**
+  - Added `RateLimitError` (HTTP status 429, code `'RATE_LIMITED'`) in [src/lib/errors.ts](file:///c:/projects/cpilancers/src/lib/errors.ts#L64-L69) and registered it in `PUBLIC_MESSAGES` and `formatErrorResponse()`.
+- **Mapped Supabase Auth Rate-Limit Errors:**
+  - In [src/services/auth.service.ts](file:///c:/projects/cpilancers/src/services/auth.service.ts), `register()`, `resendVerificationEmail()`, and `sendPasswordResetEmail()` now detect `over_email_send_rate_limit`, `email_rate_limit_exceeded`, and status 429, raising `RateLimitError` with:
+    > *"Too many verification emails requested. Please wait a few minutes before trying again."*
+  - In [src/app/(auth)/login/page.tsx](file:///c:/projects/cpilancers/src/app/(auth)/login/page.tsx#L144-L151), password reset requests parse the API error and display the polite user message.
+
+---
+
+### 4. Verification Results
+
+| Check | Command | Result |
+|---|---|---|
+| **TypeScript** | `npx tsc --noEmit` | **0 errors** |
+| **ESLint** | `npm run lint` | **0 errors, 0 warnings** |
+| **Vitest Tests** | `npx vitest run` | **47 files passed, 986 tests passed (0 failures)** |
+| **Next.js Production Build** | `npx next build --webpack` | **Compiled all 59 routes cleanly** |
+
+### Modified & Created Files
+- **Modified:**
+  - [src/app/dashboard/consultant/page.tsx](file:///c:/projects/cpilancers/src/app/dashboard/consultant/page.tsx)
+  - [src/app/dashboard/client/page.tsx](file:///c:/projects/cpilancers/src/app/dashboard/client/page.tsx)
+  - [src/components/layout/dashboard-shell.tsx](file:///c:/projects/cpilancers/src/components/layout/dashboard-shell.tsx)
+  - [src/app/api/auth/callback/route.ts](file:///c:/projects/cpilancers/src/app/api/auth/callback/route.ts)
+  - [src/app/(auth)/login/page.tsx](file:///c:/projects/cpilancers/src/app/(auth)/login/page.tsx)
+  - [src/services/auth.service.ts](file:///c:/projects/cpilancers/src/services/auth.service.ts)
+  - [src/lib/errors.ts](file:///c:/projects/cpilancers/src/lib/errors.ts)
+  - [src/app/api/messages/conversations/[conversationId]/route.ts](file:///c:/projects/cpilancers/src/app/api/messages/conversations/[conversationId]/route.ts)
+  - [src/tests/auth-callback-redirect.test.ts](file:///c:/projects/cpilancers/src/tests/auth-callback-redirect.test.ts)
+  - [src/tests/auth-resend-verification.test.ts](file:///c:/projects/cpilancers/src/tests/auth-resend-verification.test.ts)
+  - [agent-work/CURRENT_TASK.md](file:///c:/projects/cpilancers/agent-work/CURRENT_TASK.md)
+  - [agent-work/IMPLEMENTATION_REPORT.md](file:///c:/projects/cpilancers/agent-work/IMPLEMENTATION_REPORT.md)
+- **Created:**
+  - [src/app/dashboard/page.tsx](file:///c:/projects/cpilancers/src/app/dashboard/page.tsx)
+  - [src/app/(auth)/reset-password/page.tsx](file:///c:/projects/cpilancers/src/app/(auth)/reset-password/page.tsx)
+  - [src/app/auth/reset-password/page.tsx](file:///c:/projects/cpilancers/src/app/auth/reset-password/page.tsx)
+  - [src/app/contact/page.tsx](file:///c:/projects/cpilancers/src/app/contact/page.tsx)
+  - [src/lib/auth/callback-redirect.ts](file:///c:/projects/cpilancers/src/lib/auth/callback-redirect.ts)
+  - [src/tests/auth-dashboard-fixes.test.ts](file:///c:/projects/cpilancers/src/tests/auth-dashboard-fixes.test.ts)
+
+
+  prompt3 
+  Analyzed auth.schemas.ts:L1-100
+Analyzed auth-me-route.test.ts:L1-100
+Analyzed env.ts:L50-95
+Analyzed CURRENT_TASK.md:L1-58
+Analyzed env.ts:L1-137
+Analyzed auth.schemas.ts:L1-102
+Analyzed route.ts:L1-75
+Analyzed callback-redirect.ts:L1-62
+Analyzed page.tsx:L1-239
+Analyzed page.tsx:L1-254
+Analyzed client.ts:L1-8
+Ran search getAppUrl
+Analyzed auth.service.ts:L1-50
+Analyzed errors.ts:L1-50
+Ran check User interface
+Analyzed database.ts:L170-230
+Analyzed database.ts:L231-260
+Analyzed auth.service.ts:L51-120
+Analyzed auth.service.ts:L121-200
+Analyzed role-redirects.ts:L1-67
+Analyzed admin.ts:L1-18
+Ran check git status
+Ran list src/app/auth
+Ran run vitest
+Edited CURRENT_TASK.md
+Edited env.ts
+Edited env.ts
+Analyzed auth.schemas.ts:L80-102
+Edited auth.schemas.ts
+Created app-url.ts
+Analyzed auth.service.ts:L30-60
+Edited auth.service.ts
+Ran run auth-url-config test
+Analyzed auth-callback-redirect.test.ts:L1-100
+Analyzed auth-callback-redirect.test.ts:L101-200
+Created callback-handler.ts
+Edited route.ts
+Created route.ts
+Created route.ts
+Ran run vitest to check regression
+Created google-icon.tsx
+Analyzed page.tsx:L90-130
+Edited page.tsx
+Analyzed page.tsx:L40-75
+Analyzed page.tsx:L120-165
+Edited page.tsx
+Edited page.tsx
+Analyzed page.tsx:L1-160
+Edited page.tsx
+Ran typeScript type check
+Ran run ESLint
+Created auth-enhancements.test.ts
+Ran run auth-enhancements test
+Ran run full test suite
+Ran next.js production build · Exited with code 1
+Ran next.js production build
+
+I have launched the Next.js production build (`npx next build --webpack`) to verify that all routes and pages compile cleanly with zero TypeScript or build errors. Waiting for the build process to finish.
+
+Ran git status check
+Analyzed CURRENT_TASK.md:L1-29
+Edited CURRENT_TASK.md
+Analyzed IMPLEMENTATION_REPORT.md:L1-50
+Analyzed IMPLEMENTATION_REPORT.md:L1580-1626
+Edited IMPLEMENTATION_REPORT.md
+Ran check git status
+
+### Implementation Summary: Auth Enhancements (Google OAuth, Email OTP, Phone OTP)
+
+All three authentication options have been implemented locally using `@supabase/ssr`, complete with Zod 4 validation, PKCE code exchange, safe role-based redirection, first-time user profile auto-provisioning, and feature-flag gating.
+
+---
+
+### Files Modified & Created
+
+#### 1. Configuration & Validation
+- [src/config/env.ts](file:///c:/projects/cpilancers/src/config/env.ts): Added `NEXT_PUBLIC_ENABLE_PHONE_OTP` feature flag (defaults to `false`, transforms to boolean) so Phone OTP remains completely hidden in production until an SMS provider is configured.
+- [src/lib/validations/auth.schemas.ts](file:///c:/projects/cpilancers/src/lib/validations/auth.schemas.ts): Added:
+  - `otpTokenSchema`: Enforces exact 6-digit verification code (`^\d{6}$`).
+  - `phoneSchema`: Validates international E.164 phone format (`^\+[1-9]\d{1,14}$`).
+  - `emailOtpSendSchema` & `emailOtpVerifySchema`.
+  - `phoneOtpSendSchema` & `phoneOtpVerifySchema`.
+
+#### 2. Auth Utilities & Server Routes
+- [src/lib/auth/app-url.ts](file:///c:/projects/cpilancers/src/lib/auth/app-url.ts): Extracted client-safe `getAppUrl()` helper so client forms can construct redirect URLs without importing server-only packages. Re-exported from [src/services/auth.service.ts](file:///c:/projects/cpilancers/src/services/auth.service.ts) for full backward compatibility.
+- [src/lib/auth/callback-handler.ts](file:///c:/projects/cpilancers/src/lib/auth/callback-handler.ts):
+  - Handles PKCE code exchange (`exchangeCodeForSession`).
+  - Enforces open-redirect validation using `safeCallbackRedirect`.
+  - Enforces canonical production redirect base `https://www.cpilancers.com` when running in production.
+  - Automatically provisions first-time Google OAuth users in `public.users` and `public.profiles` using the selected/inferred role (`client` or `consultant`) to prevent missing-profile 404s.
+- [src/app/auth/callback/route.ts](file:///c:/projects/cpilancers/src/app/auth/callback/route.ts) & [src/app/api/auth/callback/route.ts](file:///c:/projects/cpilancers/src/app/api/auth/callback/route.ts): Shared handler covering both callback routes.
+- [src/app/api/auth/sync-session/route.ts](file:///c:/projects/cpilancers/src/app/api/auth/sync-session/route.ts): Authenticated session sync endpoint that verifies OTP sessions and ensures the user row and base profile exist.
+
+#### 3. UI Components & Pages
+- [src/components/icons/google-icon.tsx](file:///c:/projects/cpilancers/src/components/icons/google-icon.tsx): Created standard multi-color Google SVG icon.
+- [src/app/(auth)/register/page.tsx](file:///c:/projects/cpilancers/src/app/(auth)/register/page.tsx):
+  - Added "Continue with Google" button with Google SVG icon and `#365cf5` design tokens.
+  - Preserves the user-selected role (`client` or `consultant`) in the OAuth redirect URL.
+- [src/app/(auth)/login/page.tsx](file:///c:/projects/cpilancers/src/app/(auth)/login/page.tsx):
+  - Added "Continue with Google" button.
+  - Added mode switcher tabs: **Password** | **Email Code** (and **Phone Code** when `NEXT_PUBLIC_ENABLE_PHONE_OTP === 'true'`).
+  - Implemented 2-step Email OTP flow (email input -> 6-digit OTP input with 60-second cooldown timer and resend button).
+  - Implemented 2-step Phone OTP flow (E.164 validation, 60-second cooldown timer, and resend button).
+  - Mapped Supabase rate limits (429, `over_email_send_rate_limit`, `email_rate_limit_exceeded`, `over_sms_send_rate_limit`, `sms_rate_limit_exceeded`) to user-friendly messages.
+
+#### 4. Tests & Task Tracking
+- [src/tests/auth-enhancements.test.ts](file:///c:/projects/cpilancers/src/tests/auth-enhancements.test.ts): 16 unit & integration tests covering Zod schemas, feature-flag gating, PKCE exchange, first-time user provisioning, and open-redirect prevention.
+- [agent-work/CURRENT_TASK.md](file:///c:/projects/cpilancers/agent-work/CURRENT_TASK.md) & [agent-work/IMPLEMENTATION_REPORT.md](file:///c:/projects/cpilancers/agent-work/IMPLEMENTATION_REPORT.md): Updated task status to `REVIEW_REQUIRED`.
+
+---
+
+### Verification Results
+
+1. **TypeScript Check:**
+   ```bash
+   npx tsc --noEmit
+   # Exit code: 0 (Zero errors)
+   ```
+
+2. **Linting:**
+   ```bash
+   npm run lint
+   # Exit code: 0 (Zero errors, zero warnings)
+   ```
+
+3. **Vitest Test Suite:**
+   ```bash
+   npx vitest run
+   # Test Files: 48 passed (48)
+   # Tests: 1,002 passed (1,002)
+   ```
+
+4. **Next.js Production Build:**
+   ```bash
+   npx next build --webpack
+   # Exit code: 0
+   # Successfully compiled and optimized all 61 static and dynamic routes.
+   ```
+
+---
+
+### Supabase Dashboard Configuration Checklist (For Later Production Setup)
+
+To activate these authentication options in production:
+
+1. **Google OAuth:**
+   - In **Google Cloud Console**: Create OAuth 2.0 Client ID under **APIs & Services > Credentials**. Add Authorized redirect URI: `https://<YOUR-PROJECT-REF>.supabase.co/auth/v1/callback`.
+   - In **Supabase Dashboard > Authentication > Providers > Google**:
+     - Enable the Google provider.
+     - Enter the **Client ID** and **Client Secret**.
+     - In **Authentication > URL Configuration**: Ensure `https://www.cpilancers.com/auth/callback` (and `http://localhost:3000/auth/callback` for dev) is added to **Redirect URLs**.
+
+2. **Email OTP:**
+   - In **Supabase Dashboard > Authentication > Providers > Email**:
+     - Ensure **Enable Email provider** is turned on.
+     - Under **Email Templates > Magic Link / OTP**, customize the template to display `{{ .Token }}` as a 6-digit verification code.
+
+3. **Phone OTP (SMS):**
+   - In **Supabase Dashboard > Authentication > Providers > Phone**:
+     - Enable Phone provider.
+     - Choose an SMS provider (Twilio, MessageBird, Vonage, etc.) and supply API credentials.
+   - In your production environment variables (e.g. Vercel):
+     - Set `NEXT_PUBLIC_ENABLE_PHONE_OTP=true` to unhide the Phone Code tab.

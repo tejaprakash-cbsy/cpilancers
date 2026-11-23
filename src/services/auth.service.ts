@@ -11,6 +11,7 @@ import {
   UnauthorizedError,
   ValidationError,
   ConflictError,
+  RateLimitError,
 } from '@/lib/errors';
 
 export interface RegisterParams {
@@ -26,33 +27,8 @@ export interface LoginParams {
   password: string;
 }
 
-export function getAppUrl(): string {
-  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (configured) return configured.replace(/\/+$/, '');
-
-  // Vercel sets NODE_ENV="production" for both production and preview deployments.
-  // Use VERCEL_ENV to differentiate: only real production requires NEXT_PUBLIC_APP_URL to be set.
-  // In Vercel preview (VERCEL_ENV === 'preview') or development, fall back to Vercel URLs or localhost.
-  const isProduction =
-    process.env.VERCEL_ENV === 'production' ||
-    (process.env.NODE_ENV === 'production' && !process.env.VERCEL_ENV);
-
-  if (isProduction) {
-    throw new AppError(
-      'NEXT_PUBLIC_APP_URL must be configured in production environment',
-      500,
-      'APP_URL_NOT_CONFIGURED'
-    );
-  }
-
-  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
-    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
-  }
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
-  }
-  return 'http://localhost:3000';
-}
+export { getAppUrl } from '@/lib/auth/app-url';
+import { getAppUrl } from '@/lib/auth/app-url';
 
 function errorMetadata(error: { code?: string; status?: number } | null | undefined) {
   return {
@@ -60,6 +36,20 @@ function errorMetadata(error: { code?: string; status?: number } | null | undefi
     status: error?.status,
   };
 }
+
+export function isRateLimitError(error: { code?: string; status?: number; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  return (
+    error.code === 'over_email_send_rate_limit' ||
+    error.code === 'email_rate_limit_exceeded' ||
+    error.code === 'over_sms_send_rate_limit' ||
+    error.code === 'sms_rate_limit_exceeded' ||
+    error.status === 429 ||
+    /rate limit|too many requests|once every \d+ seconds/i.test(error.message || '')
+  );
+}
+
+const isEmailRateLimitError = isRateLimitError;
 
 async function cleanupPartialRegistration(
   adminSupabase: ReturnType<typeof createAdminClient>,
@@ -146,6 +136,9 @@ export class AuthService {
         console.error('[Auth Error - Register]:', errorMetadata(authError));
         if (authError.code === 'user_already_exists') {
           throw new ConflictError('An account with this email already exists.');
+        }
+        if (isEmailRateLimitError(authError)) {
+          throw new RateLimitError('Too many verification emails requested. Please wait a few minutes before trying again.');
         }
         throw new AppError(authError.message, 400, 'AUTH_SIGNUP_ERROR');
       }
@@ -276,12 +269,16 @@ export class AuthService {
 
       if (error) {
         console.error('[Auth Error - Password Reset]:', error);
+        if (isEmailRateLimitError(error)) {
+          throw new RateLimitError('Too many verification emails requested. Please wait a few minutes before trying again.');
+        }
         // Don't reveal if email exists or not for security
         // Just return success
       }
 
       return { success: true };
     } catch (error) {
+      if (error instanceof AppError) throw error;
       console.error('[AuthService.sendPasswordResetEmail]:', error);
       // Return success even on error to prevent email enumeration
       return { success: true };
@@ -391,14 +388,154 @@ export class AuthService {
       if (error) {
         // Log error internally for monitoring without leaking account existence to clients
         console.error('[Auth Error - Resend Verification]:', error.message || error);
+        if (isEmailRateLimitError(error)) {
+          throw new RateLimitError('Too many verification emails requested. Please wait a few minutes before trying again.');
+        }
       }
 
       // Always return success to prevent user enumeration
       return { success: true };
     } catch (error) {
+      if (error instanceof AppError) throw error;
       console.error('[AuthService.resendVerificationEmail]:', error);
       // Fail neutral: always return success to caller
       return { success: true };
+    }
+  }
+
+  /**
+   * Idempotently ensure user and profile records exist in public tables
+   * for an authenticated Supabase user.
+   *
+   * Strict Role Security:
+   * - Only 'client' and 'consultant' are permitted as requested roles.
+   * - Defaults to 'client' if not provided, unrecognized, or if 'admin' was attempted.
+   * - Under NO circumstances can 'admin' be assigned from query params, request bodies, or OAuth metadata.
+   */
+  static async ensureUserRecords(
+    authUser: {
+      id: string;
+      email?: string | null;
+      phone?: string | null;
+      user_metadata?: Record<string, unknown> | null;
+    },
+    requestedRole?: string | null
+  ): Promise<{ user: User; isNew: boolean }> {
+    const adminSupabase = createAdminClient();
+
+    // 1. Check if user already exists
+    const { data: existingUser, error: checkError } = await adminSupabase
+      .from('users')
+      .select('*')
+      .eq('id', authUser.id)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('[AuthService.ensureUserRecords - Check User]:', errorMetadata(checkError));
+      throw new AppError('Database lookup failed while ensuring user records', 500);
+    }
+
+    if (existingUser) {
+      // User exists. Ensure profile also exists idempotently
+      const { data: existingProfile } = await adminSupabase
+        .from('profiles')
+        .select('id')
+        .eq('user_id', authUser.id)
+        .maybeSingle();
+
+      if (!existingProfile) {
+        const metadata = authUser.user_metadata || {};
+        const fullName = (typeof metadata.full_name === 'string' ? metadata.full_name : typeof metadata.name === 'string' ? metadata.name : '').trim();
+        const firstName = typeof metadata.given_name === 'string' ? metadata.given_name : typeof metadata.first_name === 'string' ? metadata.first_name : (fullName ? fullName.split(' ')[0] : 'User');
+        const lastName = typeof metadata.family_name === 'string' ? metadata.family_name : typeof metadata.last_name === 'string' ? metadata.last_name : (fullName ? fullName.split(' ').slice(1).join(' ') : '');
+        const displayName = fullName || `${firstName} ${lastName}`.trim() || (authUser.email ? authUser.email.split('@')[0] : authUser.phone || 'User');
+        const avatarUrl = typeof metadata.avatar_url === 'string' ? metadata.avatar_url : typeof metadata.picture === 'string' ? metadata.picture : null;
+
+        await adminSupabase.from('profiles').insert({
+          user_id: authUser.id,
+          first_name: firstName,
+          last_name: lastName,
+          display_name: displayName,
+          avatar_url: avatarUrl,
+          timezone: 'UTC',
+          country_code: 'US',
+        });
+      }
+
+      return { user: existingUser as User, isNew: false };
+    }
+
+    // 2. Strict Role Security: Only allow 'client' or 'consultant'; default 'client'.
+    // NEVER allow 'admin' from query params, request bodies, or OAuth metadata.
+    let assignedRole: 'client' | 'consultant' = 'client';
+    if (requestedRole === 'consultant' || requestedRole === 'client') {
+      assignedRole = requestedRole;
+    } else if (authUser.user_metadata?.role === 'consultant' || authUser.user_metadata?.role === 'client') {
+      assignedRole = authUser.user_metadata.role;
+    }
+
+    const metadata = authUser.user_metadata || {};
+    const fullName = (typeof metadata.full_name === 'string' ? metadata.full_name : typeof metadata.name === 'string' ? metadata.name : '').trim();
+    const firstName = typeof metadata.given_name === 'string' ? metadata.given_name : typeof metadata.first_name === 'string' ? metadata.first_name : (fullName ? fullName.split(' ')[0] : 'User');
+    const lastName = typeof metadata.family_name === 'string' ? metadata.family_name : typeof metadata.last_name === 'string' ? metadata.last_name : (fullName ? fullName.split(' ').slice(1).join(' ') : '');
+    const displayName = fullName || `${firstName} ${lastName}`.trim() || (authUser.email ? authUser.email.split('@')[0] : authUser.phone || 'User');
+    const avatarUrl = typeof metadata.avatar_url === 'string' ? metadata.avatar_url : typeof metadata.picture === 'string' ? metadata.picture : null;
+
+    const email = authUser.email?.toLowerCase() || (authUser.phone ? `${authUser.phone}@phone.cpilancers.local` : '');
+
+    const { data: newUser, error: insertUserError } = await adminSupabase
+      .from('users')
+      .insert({
+        id: authUser.id,
+        email,
+        role: assignedRole,
+        status: 'active',
+        is_email_verified: !!authUser.email,
+        phone_number: authUser.phone || null,
+      })
+      .select('*')
+      .single();
+
+    if (insertUserError || !newUser) {
+      console.error('[AuthService.ensureUserRecords - Insert User]:', errorMetadata(insertUserError));
+      // Concurrent insert fallback check
+      const { data: retryUser } = await adminSupabase
+        .from('users')
+        .select('*')
+        .eq('id', authUser.id)
+        .maybeSingle();
+
+      if (retryUser) {
+        return { user: retryUser as User, isNew: false };
+      }
+      throw new AppError('Failed to create user record', 500);
+    }
+
+    await adminSupabase.from('profiles').insert({
+      user_id: authUser.id,
+      first_name: firstName,
+      last_name: lastName,
+      display_name: displayName,
+      avatar_url: avatarUrl,
+      timezone: 'UTC',
+      country_code: 'US',
+    });
+
+    return { user: newUser as User, isNew: true };
+  }
+
+  /**
+   * Update user last login timestamp
+   */
+  static async updateLastLogin(userId: string): Promise<void> {
+    try {
+      const adminSupabase = createAdminClient();
+      await adminSupabase
+        .from('users')
+        .update({ last_login_at: new Date().toISOString() })
+        .eq('id', userId);
+    } catch (err) {
+      console.error('[AuthService.updateLastLogin]:', err);
     }
   }
 }

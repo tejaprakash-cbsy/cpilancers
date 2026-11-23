@@ -35,7 +35,8 @@ vi.mock('@/lib/supabase/server', () => ({
   }),
 }));
 
-import { GET, safeCallbackRedirect, DEFAULT_REDIRECT } from '@/app/api/auth/callback/route';
+import { GET } from '@/app/api/auth/callback/route';
+import { safeCallbackRedirect, DEFAULT_REDIRECT } from '@/lib/auth/callback-redirect';
 
 function request(params: Record<string, string>): NextRequest {
   const qs = new URLSearchParams(params).toString();
