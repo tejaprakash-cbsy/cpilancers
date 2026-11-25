@@ -10,7 +10,11 @@ import {
   phoneSchema,
   otpTokenSchema,
 } from '@/lib/validations/auth.schemas';
-import { handleAuthCallback, getCallbackRedirectBase } from '@/lib/auth/callback-handler';
+import {
+  handleAuthCallback,
+  getCallbackRedirectBase,
+  sanitizeCallbackErrorMessage,
+} from '@/lib/auth/callback-handler';
 import { AuthService, isRateLimitError } from '@/services/auth.service';
 import { POST as handleOtpRequest } from '@/app/api/auth/otp/request/route';
 import { POST as handleOtpVerify } from '@/app/api/auth/otp/verify/route';
@@ -487,6 +491,47 @@ describe('Auth Enhancements — Callback Handler & OAuth PKCE', () => {
 
     expect(res.headers.get('location')).not.toContain('evil.example.com');
     expect(res.headers.get('location')).toBe(`${LOCAL_ORIGIN}/dashboard/consultant`);
+  });
+
+  it('sanitizes PKCE code challenge mismatch and redirects to /auth-error with user-friendly message', async () => {
+    mockExchangeCodeForSession.mockResolvedValue({
+      data: null,
+      error: { message: 'code challenge does not match previously saved code verifier' },
+    });
+
+    const req = new NextRequest(`${LOCAL_ORIGIN}/api/auth/callback?code=mismatched-pkce-code`);
+    const res = await handleAuthCallback(req);
+
+    expect(res.headers.get('location')).toContain('/auth-error');
+    // Raw technical error must NOT be in the redirect location
+    expect(res.headers.get('location')).not.toContain('code+challenge+does+not+match');
+    expect(res.headers.get('location')).toContain('Your+sign-in+session+expired+or+was+interrupted');
+  });
+});
+
+describe('Auth Enhancements — Callback Error Sanitization Helper', () => {
+  it('sanitizes PKCE and code challenge error messages', () => {
+    expect(
+      sanitizeCallbackErrorMessage('code challenge does not match previously saved code verifier')
+    ).toBe('Your sign-in session expired or was interrupted. Please try signing in again.');
+
+    expect(sanitizeCallbackErrorMessage('pkce verification failed')).toBe(
+      'Your sign-in session expired or was interrupted. Please try signing in again.'
+    );
+
+    expect(sanitizeCallbackErrorMessage('invalid_grant: code verifier mismatch')).toBe(
+      'Your sign-in session expired or was interrupted. Please try signing in again.'
+    );
+  });
+
+  it('sanitizes rate limit errors in callback', () => {
+    expect(sanitizeCallbackErrorMessage('rate limit exceeded')).toBe(
+      'Too many sign-in attempts. Please wait a few minutes before trying again.'
+    );
+  });
+
+  it('falls back safely when error message is empty', () => {
+    expect(sanitizeCallbackErrorMessage(null)).toBe('Invalid or expired sign-in link or session');
   });
 });
 

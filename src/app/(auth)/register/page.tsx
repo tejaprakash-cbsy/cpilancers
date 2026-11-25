@@ -10,8 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { UserPlus, Briefcase, Users } from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
 import { GoogleIcon } from '@/components/icons/google-icon';
-import { createClient } from '@/lib/supabase/client';
-import { getAppUrl } from '@/lib/auth/app-url';
 import { getRegisterFieldErrors } from '@/lib/validations/auth.schemas';
 import type { RegisterFormData } from '@/lib/validations/auth.schemas';
 
@@ -79,25 +77,16 @@ export default function RegisterPage() {
     }
   };
 
-  const handleGoogleSignUp = async () => {
-    try {
-      setIsGoogleLoading(true);
-      setError('');
-      const supabase = createClient();
-      const role = formData.role || 'consultant';
-      const targetNext = role === 'client' ? '/dashboard/client' : '/dashboard/consultant';
-      const redirectTo = `${getAppUrl()}/api/auth/callback?role=${encodeURIComponent(role)}&next=${encodeURIComponent(targetNext)}`;
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo,
-        },
-      });
-      if (error) throw error;
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Google sign-up failed');
-      setIsGoogleLoading(false);
-    }
+  const handleGoogleSignUp = () => {
+    setIsGoogleLoading(true);
+    setError('');
+    const role = formData.role || 'consultant';
+    const targetNext = role === 'client' ? '/dashboard/client' : '/dashboard/consultant';
+    const params = new URLSearchParams();
+    params.set('role', role);
+    params.set('next', targetNext);
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- Full document navigation to follow server redirect to Google OAuth
+    window.location.href = `/api/auth/oauth/google?${params.toString()}`;
   };
 
   if (success) {

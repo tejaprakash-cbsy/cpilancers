@@ -7,6 +7,17 @@ import { safeCallbackRedirect, DEFAULT_REDIRECT } from '@/lib/auth/callback-redi
 import { resolvePostLoginPath } from '@/lib/auth/role-redirects';
 import type { UserRole } from '@/types/database';
 
+export function sanitizeCallbackErrorMessage(rawMessage?: string | null): string {
+  if (!rawMessage) return 'Invalid or expired sign-in link or session';
+  if (/code challenge|code verifier|pkce|invalid[_\s]grant/i.test(rawMessage)) {
+    return 'Your sign-in session expired or was interrupted. Please try signing in again.';
+  }
+  if (/rate limit|too many requests/i.test(rawMessage)) {
+    return 'Too many sign-in attempts. Please wait a few minutes before trying again.';
+  }
+  return rawMessage;
+}
+
 export function getCallbackRedirectBase(requestUrl: string): string {
   if (
     process.env.VERCEL_ENV === 'production' ||
@@ -32,8 +43,9 @@ export async function handleAuthCallback(request: NextRequest) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (error) {
+      console.error('[Auth Callback - PKCE Exchange Error]:', error.message || error);
       const errorUrl = new URL('/auth-error', redirectBase);
-      errorUrl.searchParams.set('message', error.message || 'Invalid or expired code');
+      errorUrl.searchParams.set('message', sanitizeCallbackErrorMessage(error.message));
       return NextResponse.redirect(errorUrl);
     }
 

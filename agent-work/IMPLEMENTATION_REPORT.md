@@ -1706,3 +1706,41 @@ Status: `REVIEW_REQUIRED` (Local implementation complete; no git push, no live D
    - Turbopack vs Webpack:
      - `npm run build` (Turbopack): Fails on Windows local environment with child process spawn failure in PostCSS worker IPC (`node process exited before we could connect to it`).
      - `npx next build --webpack`: Passes with 0 errors, compiling all 63 routes successfully.
+
+
+## 2026-11-24 — Batch 3d: Google OAuth PKCE Fix (Server Initiation Route & Error Sanitization)
+
+### Status: `REVIEW_REQUIRED` (Local Implementation Complete)
+
+### Changes Implemented:
+
+1. **Server-Side Google OAuth Initiation (`GET /api/auth/oauth/google`):**
+   - Created `src/app/api/auth/oauth/google/route.ts`:
+     - Reads and strictly allowlists `role` (`'client'` | `'consultant'`, defaulting to `'client'`; `'admin'` rejected).
+     - Validates `next` redirect with `safeCallbackRedirect`.
+     - Calls `supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${getAppUrl()}/api/auth/callback?role=${role}&next=...`, skipBrowserRedirect: true } })` using `createServerClient()`.
+     - Uses `hardenSessionCookieOptions` (`HttpOnly: true`, `Secure: true`, `SameSite: 'lax'`) on all cookies and attaches `Set-Cookie` headers for the PKCE `code-verifier` cookie to `NextResponse.redirect(data.url)`.
+     - Both initiation and callback now use `createServerClient()`, allowing `HttpOnly` cookies to overwrite cleanly and eliminating browser `document.cookie` permission collisions.
+
+2. **UI Navigation:**
+   - In `src/app/(auth)/login/page.tsx` and `src/app/(auth)/register/page.tsx`:
+     - Updated "Continue with Google" buttons to navigate to `/api/auth/oauth/google?...`.
+     - Set `isGoogleLoading = true` immediately upon click to prevent double-clicks during navigation.
+
+3. **Callback Error Sanitization:**
+   - In `src/lib/auth/callback-handler.ts`:
+     - Added `sanitizeCallbackErrorMessage(rawMessage)` to sanitize raw PKCE error messages (`code challenge does not match previously saved code verifier`, `pkce verification failed`, etc.) into a user-friendly error message: *"Your sign-in session expired or was interrupted. Please try signing in again."*.
+     - Preserves internal error logging while preventing technical OAuth messages from leaking to `/auth-error`.
+
+4. **Test & Build Verification:**
+   - Created `src/tests/auth-oauth-google.test.ts` (9 unit tests):
+     - Role allowlist (`client`, `consultant`, rejection of `admin`).
+     - Safe `next` parameter validation (stripping hostile external targets).
+     - PKCE code-verifier cookie attachment with `HttpOnly`, `Secure`, `SameSite=Lax`.
+     - Redirection to Google OAuth URL and fallback to `/auth-error` on provider failure.
+   - Updated `src/tests/auth-enhancements.test.ts` (26 unit tests):
+     - Tested `sanitizeCallbackErrorMessage` and PKCE code challenge mismatch redirection.
+   - `npx tsc --noEmit`: 0 errors.
+   - `npm run lint`: 0 errors, 0 warnings.
+   - `npx vitest run`: Passed all 49 test files (1,021 tests passed, 0 failures).
+   - `npx next build --webpack`: Successfully compiled all 64 static and dynamic routes with exit code 0.

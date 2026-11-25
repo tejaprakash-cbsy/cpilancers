@@ -2,44 +2,43 @@
 
 ## Assignment
 
-ID: `BATCH-3C-AUTH-REFINED-ARCHITECTURE`
+ID: `BATCH-3D-GOOGLE-OAUTH-PKCE-FIX`
 
-Status: `REVIEW_REQUIRED`
+Status: `COMPLETED`
 
 Approval: `APPROVED FOR LOCAL IMPLEMENTATION`
 
-Task: Implement three additional authentication methods in CPI Lancers using `@supabase/ssr` with idempotent `AuthService.ensureUserRecords`, dedicated `/api/auth/otp/request` and `/api/auth/otp/verify` server endpoints, strict role allowlist enforcement, Google OAuth PKCE flow, and feature-flagged Phone OTP. Local only: no git push, no live DB migrations, do not touch migration 00018 or the forum-security branch.
+Task: Fix Google OAuth PKCE `code challenge does not match previously saved code verifier` error by implementing server-side OAuth initiation (`GET /api/auth/oauth/google`), updating client buttons, and sanitizing PKCE errors in callback. Local only: no git push, no live DB migrations, do not touch migration 00018 or the forum-security branch.
 
 ## Actions Executed
 
-1. **Idempotent User Provisioning (`AuthService.ensureUserRecords`):**
-   - Implemented `AuthService.ensureUserRecords(authUser, requestedRole?)` with `createAdminClient()`.
-   - Strict role security: Only permits `'client'` or `'consultant'` (defaults to `'client'`). Rejects `'admin'` unconditionally from query params, request bodies, or OAuth user metadata.
-   - Idempotently creates records in `public.users` and `public.profiles` if missing, sets `status: 'active'`, marks `is_email_verified: true` for Google / verified Email OTP, and derives user names from metadata or fallback.
-   - Implemented `AuthService.updateLastLogin(userId)` to keep login timestamps updated.
+1. **Server-Side OAuth Initiation (`GET /api/auth/oauth/google`):**
+   - Created `src/app/api/auth/oauth/google/route.ts`:
+     - Reads and strictly allowlists `role` (`'client'` | `'consultant'`, defaulting to `'client'`; `'admin'` rejected).
+     - Validates `next` with `safeCallbackRedirect`.
+     - Calls `supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${getAppUrl()}/api/auth/callback?...`, skipBrowserRedirect: true } })` using `createServerClient()`.
+     - Sets the PKCE `code-verifier` cookie via `createServerClient` with `hardenSessionCookieOptions` (`HttpOnly`, `Secure`, `SameSite=Lax`) and explicitly attaches `Set-Cookie` headers to `NextResponse.redirect(data.url)`.
+     - Because both initiation and callback now use `createServerClient()`, `HttpOnly` cookies overwrite cleanly every time, resolving the browser `document.cookie` permission restriction.
 
-2. **Google OAuth Flow:**
-   - Added "Continue with Google" button with Google SVG icon and `#365cf5` design tokens to both `login/page.tsx` and `register/page.tsx`.
-   - On `/register`, preserves the selected role (`client` or `consultant`) in the OAuth redirect URL: `${getAppUrl()}/api/auth/callback?role=...&next=...`.
-   - In `/api/auth/callback` (and `/auth/callback`), after `exchangeCodeForSession(code)` succeeds, it calls `AuthService.ensureUserRecords`, updates `last_login_at`, and safely redirects to `resolvePostLoginPath(role, next)` preventing open redirects.
+2. **UI Navigation:**
+   - In `src/app/(auth)/login/page.tsx` and `src/app/(auth)/register/page.tsx`:
+     - Updated the "Continue with Google" button handlers to navigate to `/api/auth/oauth/google?...`.
+     - Handlers immediately set loading state (`isGoogleLoading = true`), disabling the button to prevent double-clicks during navigation.
 
-3. **Dedicated Server OTP API Endpoints:**
-   - Created `POST /api/auth/otp/request`:
-     - Validates `{ channel: 'email', email, role? }` or `{ channel: 'phone', phone, role? }`.
-     - Strictly enforces feature flag: blocks phone OTP requests with `403 Forbidden` if `NEXT_PUBLIC_ENABLE_PHONE_OTP !== 'true'`.
-     - Calls `supabase.auth.signInWithOtp` and maps rate-limit errors to `RateLimitError` (HTTP 429).
-   - Created `POST /api/auth/otp/verify`:
-     - Validates `{ channel, identifier, token (6 digits), role? }`.
-     - Calls `supabase.auth.verifyOtp`, runs `AuthService.ensureUserRecords`, updates `last_login_at`, and returns `{ success: true, data: { user: { id, email, role } } }`.
-     - Sets session cookies server-side with hardened attributes via `@supabase/ssr`.
-   - In `login/page.tsx`:
-     - Added mode switcher: **Password** | **Email Code** (and **Phone Code** when enabled).
-     - Connected 2-step OTP flows directly to the server endpoints with 60s cooldown timers.
+3. **Callback Error Sanitization:**
+   - In `src/lib/auth/callback-handler.ts`:
+     - Created `sanitizeCallbackErrorMessage(rawMessage)` to sanitize raw PKCE error messages (`code challenge does not match previously saved code verifier`, `pkce verification failed`, etc.) into a friendly user message: *"Your sign-in session expired or was interrupted. Please try signing in again."*.
+     - Ensured internal error logging captures technical error details while `/auth-error` receives the sanitized message.
 
-4. **Verification & Diagnostics:**
+4. **Verification & Tests:**
+   - Created `src/tests/auth-oauth-google.test.ts` (9 unit tests):
+     - Verified role allowlist enforcement (`client`, `consultant`, rejection of `admin`).
+     - Verified safe `next` validation and stripping of external open-redirect targets.
+     - Verified PKCE code-verifier cookie attachment with `HttpOnly`, `Secure`, `SameSite=Lax`.
+     - Verified redirection to OAuth provider URL and error fallback to `/auth-error`.
+   - Updated `src/tests/auth-enhancements.test.ts` (26 unit tests):
+     - Added tests for `sanitizeCallbackErrorMessage` and PKCE code challenge mismatch redirection.
    - `npx tsc --noEmit`: 0 errors.
    - `npm run lint`: 0 errors, 0 warnings.
-   - `npx vitest run`: 48 test files passed, 1,008 tests passed (+22 unit tests in `src/tests/auth-enhancements.test.ts`).
-   - Turbopack vs Webpack:
-     - `npm run build` (Turbopack): Windows sandbox child process spawn issue on PostCSS worker IPC (`node process exited before we could connect to it`).
-     - `npx next build --webpack`: Successfully compiled all 63 static and dynamic routes with zero errors.
+   - `npx vitest run`: 49 test files passed, 1,021 tests passed (0 failures).
+   - `npx next build --webpack`: successfully compiled all 64 static and dynamic routes with exit code 0.

@@ -10,8 +10,6 @@ import { Card, CardContent, CardHeader, CardDescription } from '@/components/ui/
 import { LogIn, Mail, Phone, KeyRound } from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
 import { GoogleIcon } from '@/components/icons/google-icon';
-import { createClient } from '@/lib/supabase/client';
-import { getAppUrl } from '@/lib/auth/app-url';
 import { resolvePostLoginPath } from '@/lib/auth/role-redirects';
 import {
   emailOtpSendSchema,
@@ -124,25 +122,15 @@ export default function LoginPage() {
     };
   }, [router, nextPath]);
 
-  // Handle Google OAuth
-  const handleGoogleSignIn = async () => {
-    try {
-      setIsGoogleLoading(true);
-      setError('');
-      const supabase = createClient();
-      const targetNext = nextPath || '/dashboard';
-      const redirectTo = `${getAppUrl()}/api/auth/callback?next=${encodeURIComponent(targetNext)}`;
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo,
-        },
-      });
-      if (oauthError) throw oauthError;
-    } catch (err: unknown) {
-      setError(formatAuthError(err));
-      setIsGoogleLoading(false);
-    }
+  // Handle Google OAuth via server-side initiation route
+  const handleGoogleSignIn = () => {
+    setIsGoogleLoading(true);
+    setError('');
+    const targetNext = nextPath || '/dashboard';
+    const params = new URLSearchParams();
+    if (targetNext) params.set('next', targetNext);
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- Full document navigation to follow server redirect to Google OAuth
+    window.location.href = `/api/auth/oauth/google?${params.toString()}`;
   };
 
   // Password handlers
