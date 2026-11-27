@@ -17,6 +17,7 @@ import {
   Menu,
   MessagesSquare,
   MessageSquareText,
+  Pencil,
   Search,
   Settings,
   User,
@@ -38,6 +39,7 @@ export interface DashboardNavItem {
 export interface DashboardShellProps {
   children: React.ReactNode;
   accountName: string;
+  accountEmail?: string;
   roleLabel: string;
   initials: string;
   role?: UserRole | null;
@@ -82,12 +84,13 @@ export function getDashboardNavItems(role?: UserRole | null): DashboardNavItem[]
 
 const defaultFooterItems: DashboardNavItem[] = [
   { label: 'Help center', href: '/contact', icon: CircleHelp },
-  { label: 'Settings', href: '/profile', icon: Settings },
+  { label: 'Settings', href: '/settings', icon: Settings },
 ];
 
 export function DashboardShell({
   children,
   accountName,
+  accountEmail,
   roleLabel,
   initials,
   role,
@@ -98,6 +101,31 @@ export function DashboardShell({
 }: DashboardShellProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = React.useState(false);
+  const accountMenuRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!accountMenuOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setAccountMenuOpen(false);
+      }
+    };
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (accountMenuRef.current && !accountMenuRef.current.contains(event.target as Node)) {
+        setAccountMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handlePointerDown);
+    };
+  }, [accountMenuOpen]);
 
   const resolvedNavItems =
     navItems && navItems.length > 0 ? navItems : getDashboardNavItems(role);
@@ -178,15 +206,24 @@ export function DashboardShell({
         <nav className="mt-auto flex w-full flex-col gap-1.5 border-t border-slate-200/80 pt-4">
           {footerItems.map((item) => {
             const Icon = item.icon;
+            const active = isActive(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setMobileMenuOpen(false)}
-                className="group flex h-[40px] items-center gap-[10px] rounded-lg px-3 text-sm font-medium text-slate-500 transition-colors hover:bg-white/70 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#365cf5]/40"
+                className={cn(
+                  'group flex h-[40px] items-center gap-[10px] rounded-lg px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#365cf5]/40',
+                  active
+                    ? 'border border-slate-200/80 bg-white text-[#365cf5] shadow-[0_1px_2px_rgba(15,23,42,0.05)]'
+                    : 'border border-transparent text-slate-500 hover:bg-white/70 hover:text-slate-900'
+                )}
               >
                 <Icon
-                  className="h-[17px] w-[17px] shrink-0 text-slate-400 transition-colors group-hover:text-slate-600"
+                  className={cn(
+                    'h-[17px] w-[17px] shrink-0 transition-colors',
+                    active ? 'text-[#365cf5]' : 'text-slate-400 group-hover:text-slate-600'
+                  )}
                   strokeWidth={1.7}
                 />
                 <span>{item.label}</span>
@@ -237,20 +274,79 @@ export function DashboardShell({
             />
           </label>
           <div className="flex items-center gap-[18px]">
-            <button
-              type="button"
-              aria-label="Notifications"
+            <Link
+              href="/settings#notifications"
+              aria-label="Notification preferences"
               className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#365cf5]/40"
             >
               <Bell className="h-[18px] w-[18px]" strokeWidth={1.7} />
-            </button>
-            <button
-              type="button"
-              aria-label="Account menu"
-              className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-[#365cf5]/10 text-xs font-semibold text-[#365cf5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#365cf5]/40"
-            >
-              {initials}
-            </button>
+            </Link>
+            <div ref={accountMenuRef} className="relative">
+              <button
+                type="button"
+                aria-label="Account menu"
+                aria-haspopup="menu"
+                aria-expanded={accountMenuOpen}
+                onClick={() => setAccountMenuOpen((open) => !open)}
+                className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-[#365cf5]/10 text-xs font-semibold text-[#365cf5] transition-colors hover:bg-[#365cf5]/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#365cf5]/40"
+              >
+                {initials}
+              </button>
+
+              {accountMenuOpen && (
+                <div
+                  role="menu"
+                  aria-label="Account options"
+                  className="absolute right-0 z-50 mt-2 w-60 rounded-xl border border-slate-200/80 bg-white p-1.5 shadow-lg"
+                >
+                  <div className="border-b border-slate-100 px-3 py-2.5">
+                    <p className="truncate text-sm font-semibold text-slate-900">{accountName}</p>
+                    <p className="truncate text-xs text-slate-500">{accountEmail || roleLabel}</p>
+                  </div>
+                  <div className="py-1">
+                    <Link
+                      href="/profile"
+                      role="menuitem"
+                      onClick={() => setAccountMenuOpen(false)}
+                      className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900"
+                    >
+                      <User className="h-4 w-4 text-slate-400" />
+                      <span>View Profile</span>
+                    </Link>
+                    <Link
+                      href="/profile/edit"
+                      role="menuitem"
+                      onClick={() => setAccountMenuOpen(false)}
+                      className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900"
+                    >
+                      <Pencil className="h-4 w-4 text-slate-400" />
+                      <span>Edit Profile</span>
+                    </Link>
+                    <Link
+                      href="/settings"
+                      role="menuitem"
+                      onClick={() => setAccountMenuOpen(false)}
+                      className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900"
+                    >
+                      <Settings className="h-4 w-4 text-slate-400" />
+                      <span>Settings</span>
+                    </Link>
+                  </div>
+                  <div className="border-t border-slate-100 pt-1">
+                    <form action="/api/auth/logout" method="POST">
+                      <button
+                        type="submit"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-rose-600 transition-colors hover:bg-rose-50"
+                      >
+                        <LogOut className="h-4 w-4" />
+                        <span>Log out</span>
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </header>
         <main className="min-w-0 flex-1">{children}</main>

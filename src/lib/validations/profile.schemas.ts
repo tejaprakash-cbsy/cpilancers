@@ -22,14 +22,14 @@ const bioSchema = z
 // Timezone validation
 const timezoneSchema = z
   .string()
-  .default('UTC');
+  .default('Asia/Kolkata');
 
 // Country code validation (ISO 3166-1 alpha-2)
 const countryCodeSchema = z
   .string()
   .length(2, 'Country code must be 2 characters')
   .regex(/^[A-Z]{2}$/, 'Must be a valid ISO country code')
-  .default('US');
+  .default('IN');
 
 // City validation
 const citySchema = z
@@ -76,9 +76,9 @@ export const consultantProfileSchema = z.object({
     .default(0),
   hourlyRateCents: z
     .number()
-    .min(1500, 'Hourly rate must be at least $15.00') // $15.00 minimum
-    .max(100000, 'Hourly rate cannot exceed $1,000.00') // $1,000.00 maximum
-    .default(0),
+    .min(50000, 'Hourly rate must be at least ₹500/hr') // ₹500.00/hr minimum in paise
+    .max(5000000, 'Hourly rate cannot exceed ₹50,000/hr') // ₹50,000.00/hr maximum in paise
+    .default(50000),
   minProjectSizeCents: z
     .number()
     .min(0, 'Minimum project size cannot be negative')

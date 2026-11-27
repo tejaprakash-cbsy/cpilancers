@@ -62,7 +62,7 @@ describe('SAP Integration Marketplace Foundation Tests', () => {
 
   it('validates profile input and rejects unsupported profile data', () => {
     expect(companyProfileSchema.safeParse({ legalName: 'Acme', industry: 'Technology', companySize: 'medium_51_200', sapFootprint: [] }).success).toBe(true);
-    expect(consultantProfileSchema.safeParse({ professionalHeadline: 'SAP CPI consultant', yearsSapExperience: 4, yearsCpiExperience: 3, hourlyRateCents: 15000, minProjectSizeCents: 0, availabilityStatus: 'available', availableHoursPerWeek: 40, overviewMarkdown: 'A'.repeat(60) }).success).toBe(true);
+    expect(consultantProfileSchema.safeParse({ professionalHeadline: 'SAP CPI consultant', yearsSapExperience: 4, yearsCpiExperience: 3, hourlyRateCents: 150000, minProjectSizeCents: 0, availabilityStatus: 'available', availableHoursPerWeek: 40, overviewMarkdown: 'A'.repeat(60) }).success).toBe(true);
     expect(companyProfileSchema.safeParse({ legalName: 'Acme', industry: 'Technology', companySize: 'admin', sapFootprint: [] }).success).toBe(false);
   });
 });

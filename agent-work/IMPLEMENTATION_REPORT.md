@@ -1823,3 +1823,49 @@ Status: `REVIEW_REQUIRED` (Local implementation complete; no git push, no live D
 1. **`scripts/data/sap-cpi-forum-seed.ts`:** Created dataset with 10 `@seed.cpilancers.com` personas, 5 SAP Integration categories, and 25 original plain-text SAP CPI discussions (5 per category, 1 pinned welcome thread, 2–4 replies each, votes, and accepted answers).
 2. **`scripts/seed-forum.ts`:** Implemented `--dry-run`, `--confirm-seed`, and `--cleanup --confirm-cleanup`, loading `.env.local` (fallback `.env`), never inserting into `public.consultant_profiles`, and safely preserving any legacy categories that still have discussions (`ON DELETE RESTRICT`).
 3. **`src/tests/forum-seed.test.ts`:** Added 5 unit tests validating all 25 threads and replies against `createDiscussionSchema` / `createReplySchema`, plain-text rules, uniqueness, and safety guards.
+
+---
+
+## 2026-11-27 — BATCH-11-LANDING-PAGE-REDESIGN
+
+- **Status:** `REVIEW_REQUIRED`
+- **Scope:** Landing Page (`src/app/page.tsx` & `src/components/landing/*`) only. No git push, no live DB migrations, no changes to auth routes, `forum-security`, or migration `00018`.
+
+### Modified / Created Files
+- `src/components/landing/hero-architecture-card.tsx` (new)
+- `src/components/landing/sap-ecosystem-panel.tsx` (new)
+- `src/components/landing/sap-domains-hub.tsx` (new)
+- `src/components/landing/platform-bento.tsx` (new)
+- `src/app/page.tsx` (redesigned)
+- `src/tests/landing-page.test.ts` (new, 4 tests)
+- `agent-work/CURRENT_TASK.md`
+
+### Verification Commands & Results
+- `npx tsc --noEmit` — passed (exit code 0)
+- `npm run lint` — passed (exit code 0)
+- `npx vitest run` — passed (`53` test files, `1044` tests passed)
+- `npx next build --webpack` — passed (exit code 0)
+
+---
+
+## 2026-11-27 — BATCH-12-PROFILE-EDIT-AND-SETTINGS
+
+- **Status:** `REVIEW_REQUIRED`
+- **Scope:** Edit Profile, Settings, Profile Schema INR Localization, and DashboardShell Account Menu only. No git push, no live DB migrations, no changes to migration 00018 or `forum-security`.
+
+### Modified / Created Files
+- `src/lib/validations/profile.schemas.ts`
+- `src/app/api/auth/change-password/route.ts` (new)
+- `src/app/profile/edit/page.tsx`
+- `src/app/settings/page.tsx` (new)
+- `src/components/layout/dashboard-shell.tsx`
+- `src/components/layout/app-chrome.tsx`
+- `src/tests/foundation.test.ts`
+- `src/tests/profile-settings.test.ts` (new, 4 tests)
+- `agent-work/CURRENT_TASK.md`
+
+### Verification Commands & Results
+- `npx tsc --noEmit` — passed (exit code 0)
+- `npm run lint` — passed (exit code 0)
+- `npx vitest run` — passed (`54` test files, `1048` tests passed)
+- `npx next build --webpack` — passed (exit code 0)

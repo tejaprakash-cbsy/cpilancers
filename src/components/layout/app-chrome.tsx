@@ -8,6 +8,8 @@ const CHROME_FREE_PREFIXES = [
   '/dashboard',
   '/admin',
   '/contracts',
+  '/settings',
+  '/profile/edit',
   '/login',
   '/register',
   '/reset-password',
