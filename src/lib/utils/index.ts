@@ -6,16 +6,17 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Format currency in cents to formatted USD string
- * @param amountInCents - e.g. 150000 -> "$1,500.00"
+ * Format currency in minor units (paise/cents) to formatted INR string by default.
+ * @param amountInMinorUnits - e.g. 15000000 -> "₹1,50,000"
  */
-export function formatCurrency(amountInCents: number): string {
-  return new Intl.NumberFormat('en-US', {
+export function formatCurrency(amountInMinorUnits: number, currency: 'INR' | 'USD' = 'INR'): string {
+  const locale = currency === 'INR' ? 'en-IN' : 'en-US';
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
-    currency: 'USD',
+    currency,
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
-  }).format(amountInCents / 100);
+  }).format(amountInMinorUnits / 100);
 }
 
 /**

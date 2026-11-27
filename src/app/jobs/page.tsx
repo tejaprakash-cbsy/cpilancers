@@ -34,7 +34,7 @@ const filterGroups = [
   // does not exist on `jobs` -- so selecting anything here made the whole
   // listing 500. The option values were already budget-type values.
   { title: 'Engagement type', key: 'budgetType', options: [{ label: 'Hourly', value: 'hourly_rate' }, { label: 'Fixed price', value: 'fixed_price' }, { label: 'Budget range', value: 'range' }] },
-  { title: 'Minimum budget', key: 'budgetMin', options: [{ label: '$5,000+', value: '500000' }, { label: '$1,000–$4,999', value: '100000' }, { label: '$500–$999', value: '50000' }] },
+  { title: 'Minimum budget', key: 'budgetMin', options: [{ label: '₹50,000+', value: '5000000' }, { label: '₹10,000–₹49,999', value: '1000000' }, { label: '₹5,000–₹9,999', value: '500000' }] },
 ] as const;
 
 /**

@@ -1,86 +1,337 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { BarChart3, BriefcaseBusiness, CircleHelp, FileText, Handshake, MessagesSquare, Settings, UsersRound, WalletCards } from 'lucide-react';
-import { DashboardShell, type DashboardNavItem } from '@/components/layout/dashboard-shell';
-import { DashboardMetric, DashboardPanel, DashboardLink, EmptyDashboardPanel, MessagePreview, UnavailablePanel } from '@/components/dashboard/dashboard-panels';
-import { ClientJobService, ClientMessagingService, ClientProfileService } from '@/services/client-api.service';
+import {
+  BarChart3,
+  BriefcaseBusiness,
+  Building2,
+  CheckCircle2,
+  Circle,
+  MessagesSquare,
+} from 'lucide-react';
+import { DashboardShell } from '@/components/layout/dashboard-shell';
+import {
+  DashboardLink,
+  DashboardMetric,
+  DashboardPanel,
+  EmptyDashboardPanel,
+  MessagePreview,
+} from '@/components/dashboard/dashboard-panels';
+import {
+  ClientJobService,
+  ClientMessagingService,
+  ClientProfileService,
+} from '@/services/client-api.service';
 import { Button } from '@/components/ui/button';
 
-const navItems: DashboardNavItem[] = [{ label: 'Overview', href: '/dashboard/client', icon: BarChart3 }, { label: 'My jobs', href: '/jobs', icon: BriefcaseBusiness }, { label: 'Contracts', href: '/contracts', icon: Handshake }, { label: 'Proposals', href: '/jobs', icon: FileText }, { label: 'Talent', href: '/consultants', icon: UsersRound }, { label: 'Messages', href: '/messages', icon: MessagesSquare }, { label: 'Spending', href: '/dashboard/client#spending', icon: WalletCards }];
-const footerItems: DashboardNavItem[] = [{ label: 'Help center', href: '/contact', icon: CircleHelp }, { label: 'Settings', href: '/profile', icon: Settings }];
+function getLocalGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
 
-type DashboardState = { profile: Awaited<ReturnType<typeof ClientProfileService.getProfile>> | null; jobs: Awaited<ReturnType<typeof ClientJobService.getJobs>>['jobs']; conversations: unknown[]; loading: boolean; error: string | null };
+type DashboardState = {
+  profile: Awaited<ReturnType<typeof ClientProfileService.getProfile>> | null;
+  jobs: Awaited<ReturnType<typeof ClientJobService.getJobs>>['jobs'];
+  conversations: unknown[];
+  loading: boolean;
+  error: string | null;
+};
 
 export default function ClientDashboardPage() {
-  const [state, setState] = useState<DashboardState>({ profile: null, jobs: [], conversations: [], loading: true, error: null });
-  // `router.push` rather than `window.location.assign`. This is an in-app
-  // navigation to another route of the same app, so a full document reload
-  // discards the already-loaded dashboard state and re-runs every data fetch
-  // for no benefit, and it breaks the client-side back button.
-  //
-  // A full reload IS still correct after sign-out (to drop all in-memory state
-  // and any cached server components); that call site is left as-is.
+  const [state, setState] = useState<DashboardState>({
+    profile: null,
+    jobs: [],
+    conversations: [],
+    loading: true,
+    error: null,
+  });
   const router = useRouter();
-  // Cancellation flag guards every state write, so a response that resolves after
-  // the user has navigated away cannot overwrite state on an unmounted
-  // component.
+
   useEffect(() => {
     let cancelled = false;
 
     Promise.all([
       ClientProfileService.getProfile(),
-      ClientJobService.getJobs({ page: 1, limit: 5, status: ['draft', 'open', 'in_review', 'hired'] }),
+      ClientJobService.getJobs({
+        page: 1,
+        limit: 5,
+        status: ['draft', 'open', 'in_review', 'hired'],
+      }),
       ClientMessagingService.getUserConversations().catch(() => []),
     ])
       .then(([profile, jobs, conversations]) => {
         if (cancelled) return;
-        setState({ profile, jobs: jobs.jobs, conversations, loading: false, error: null });
+        setState({
+          profile,
+          jobs: jobs.jobs,
+          conversations,
+          loading: false,
+          error: null,
+        });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setState((current) => ({ ...current, loading: false, error: err instanceof Error ? err.message : 'Unable to load dashboard' }));
+        setState((current) => ({
+          ...current,
+          loading: false,
+          error: err instanceof Error ? err.message : 'Unable to load dashboard',
+        }));
       });
 
     return () => {
       cancelled = true;
     };
   }, []);
-  // No avatar initials while loading: the profile that supplies them has not
-  // loaded yet, and a hardcoded "AN" would attribute the account to a person
-  // who may not exist. The shell renders an empty circle until data arrives.
-  if (state.loading) return <DashboardShell accountName="Client account" roleLabel="Client account" initials="" navItems={navItems} footerItems={footerItems}><div className="flex min-h-[calc(100vh-72px)] items-center justify-center"><div className="h-10 w-10 animate-spin rounded-full border-2 border-[#dde1e7] border-t-[#365cf5]" /></div></DashboardShell>;
-  const profile = state.profile; const name = profile?.profile.display_name || profile?.profile.first_name || 'Client'; const initials = name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+
+  if (state.loading) {
+    return (
+      <DashboardShell
+        accountName="Client account"
+        roleLabel="Enterprise Client"
+        initials=""
+        role="client"
+      >
+        <div className="flex min-h-[calc(100vh-72px)] items-center justify-center">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-[#dde1e7] border-t-[#365cf5]" />
+        </div>
+      </DashboardShell>
+    );
+  }
+
+  const profile = state.profile;
+  const name = profile?.profile.display_name || profile?.profile.first_name || 'Client';
+  const companyName = profile?.company?.brand_name || profile?.company?.legal_name || name;
+  const initials = companyName
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+  const hasCompanyProfile = Boolean(profile?.clientProfile && profile?.company);
+  const openJobsCount = state.jobs.filter((job) => job.status === 'open').length;
+  const greeting = getLocalGreeting();
+
+  const onboardingSteps = [
+    {
+      label: 'Complete company profile',
+      done: hasCompanyProfile,
+      href: '/profile',
+    },
+    {
+      label: 'Browse open discussions',
+      done: false,
+      href: '/forum',
+    },
+    {
+      label: 'Post your first SAP role',
+      done: state.jobs.length > 0,
+      href: '/jobs/create',
+    },
+  ];
+
   return (
-    <DashboardShell accountName={profile?.company?.brand_name || profile?.company?.legal_name || name} roleLabel="Client account" initials={initials} navItems={navItems} footerItems={footerItems}>
+    <DashboardShell
+      accountName={companyName}
+      roleLabel="Enterprise Client"
+      initials={initials}
+      role="client"
+    >
       <div className="p-5 sm:p-8">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
-            <h1 className="text-[28px] font-normal">{profile?.company?.brand_name || name} workspace</h1>
-            <p className="mt-1 text-sm text-[#667085]">A clear view of hiring, delivery, and team spend.</p>
+            <h1 className="text-[28px] font-normal text-[#172033]">
+              {greeting}, {name.split(' ')[0]}
+            </h1>
+            <p className="mt-1 text-sm text-[#667085]">
+              A clear view of your SAP integration hiring and community activity.
+            </p>
           </div>
-          <Button onClick={() => router.push('/jobs/create')}>Post a job</Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="outline" onClick={() => router.push('/consultants')}>
+              Browse consultants
+            </Button>
+            <Button onClick={() => router.push('/jobs/create')}>Post a job</Button>
+          </div>
         </div>
 
-        {(!profile?.clientProfile || !profile?.company) && (
-          <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50/70 p-5 text-[#172033]">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-base font-medium text-[#172033]">Complete your company profile</h2>
-                <p className="mt-1 text-sm text-[#667085]">
-                  Add your company details and SAP footprint to establish trust with top SAP integration consultants.
-                </p>
-              </div>
-              <Button onClick={() => router.push('/profile')} className="shrink-0 bg-[#365cf5] hover:bg-[#2445c7] text-white">
-                Complete profile
-              </Button>
-            </div>
+        {state.error && state.error !== 'Resource not found.' && (
+          <div className="mt-5 rounded-[10px] border border-[#f4c7c3] bg-[#fef0ef] p-4 text-sm text-[#b42318]">
+            {state.error}
           </div>
         )}
 
-        {state.error && state.error !== 'Resource not found.' && (
-          <div className="mt-5 rounded-[10px] border border-[#f4c7c3] bg-[#fef0ef] p-4 text-sm text-[#b42318]">{state.error}</div>
-        )}<div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><DashboardMetric label="Open jobs" value={String(state.jobs.filter((job) => job.status === 'open').length)} detail="From live jobs API" icon={BriefcaseBusiness} /><DashboardMetric label="Active contracts" value="—" detail="No aggregate endpoint" icon={Handshake} /><DashboardMetric label="Proposals received" value="—" detail="Requires per-job queries" icon={FileText} /><DashboardMetric label="September spend" value="—" detail="No spending endpoint" icon={WalletCards} /></div><div className="mt-5 grid gap-5 xl:grid-cols-[1fr_300px]"><div className="space-y-5"><DashboardPanel title="Posted jobs" action={<DashboardLink href="/jobs">Manage all jobs</DashboardLink>}>{state.jobs.length ? <div className="overflow-x-auto"><table className="w-full min-w-[580px] text-left text-xs"><thead className="bg-[#f0f2f5] text-[10px] uppercase text-[#667085]"><tr><th className="p-3">Job</th><th className="p-3">Status</th><th className="p-3">Proposals</th><th className="p-3">Actions</th></tr></thead><tbody>{state.jobs.map((job) => <tr key={job.id} className="border-t border-[#dde1e7]"><td className="p-3 font-medium">{job.title}</td><td className="p-3"><span className="rounded-full bg-[#eef1ff] px-2 py-1 text-[10px] text-[#2445c7]">{job.status}</span></td><td className="p-3">{job.proposals_count}</td><td className="p-3"><a href={`/jobs/${job.id}`} className="text-[#365cf5]">View</a></td></tr>)}</tbody></table></div> : <EmptyDashboardPanel title="No posted jobs" detail="Post a project to start building your hiring pipeline." href="/jobs/create" action="Post a job" />}</DashboardPanel><DashboardPanel title="Active contracts" action={<DashboardLink href="/contracts">View all contracts</DashboardLink>}><EmptyDashboardPanel title="Contract data unavailable" detail="The current frontend API does not expose a client contract-list summary." /></DashboardPanel><div className="grid gap-5 md:grid-cols-2"><DashboardPanel title="Proposals received"><EmptyDashboardPanel title="No aggregate proposal data" detail="Proposal counts require per-job proposal requests." /></DashboardPanel><DashboardPanel title="Messages" action={<DashboardLink href="/messages">Open inbox</DashboardLink>}>{state.conversations.length ? <div className="space-y-4">{state.conversations.slice(0, 3).map((conversation, index) => <MessagePreview key={index} name={`Conversation ${index + 1}`} detail="Open conversation to view messages" />)}</div> : <EmptyDashboardPanel title="No conversations yet" detail="Messages will appear here when you connect with talent." />}</DashboardPanel></div></div><div className="space-y-5"><UnavailablePanel title="Hiring pipeline" detail="Pipeline aggregation is not available from the current API surface." /><UnavailablePanel title="Spending" detail="Spending totals and chart data are not exposed by the current API." /><UnavailablePanel title="Hired freelancers" detail="A hired-talent summary endpoint is not available." /><UnavailablePanel title="Team updates" detail="Notification aggregation is not available for this dashboard." /></div></div></div></DashboardShell>
+        <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <DashboardMetric
+            label="Open jobs"
+            value={String(openJobsCount)}
+            detail="Currently accepting proposals"
+            icon={BriefcaseBusiness}
+          />
+          <DashboardMetric
+            label="Total posted jobs"
+            value={String(state.jobs.length)}
+            detail="Across all statuses"
+            icon={BarChart3}
+          />
+          <DashboardMetric
+            label="Messages"
+            value={String(state.conversations.length)}
+            detail={
+              state.conversations.length === 1 ? 'Active conversation' : 'Active conversations'
+            }
+            icon={MessagesSquare}
+          />
+          <DashboardMetric
+            label="Company profile"
+            value={hasCompanyProfile ? 'Ready' : 'Setup needed'}
+            detail={hasCompanyProfile ? 'Visible to consultants' : 'Add company details'}
+            icon={Building2}
+          />
+        </div>
+
+        <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_320px]">
+          <div className="space-y-5">
+            <DashboardPanel
+              title="Posted jobs"
+              action={<DashboardLink href="/jobs">Manage all jobs</DashboardLink>}
+            >
+              {state.jobs.length ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[540px] text-left text-xs">
+                    <thead className="bg-[#f0f2f5] text-[10px] uppercase text-[#667085]">
+                      <tr>
+                        <th className="p-3">Job</th>
+                        <th className="p-3">Status</th>
+                        <th className="p-3">Proposals</th>
+                        <th className="p-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {state.jobs.map((job) => (
+                        <tr key={job.id} className="border-t border-[#dde1e7]">
+                          <td className="p-3 font-medium">{job.title}</td>
+                          <td className="p-3">
+                            <span className="rounded-full bg-[#eef1ff] px-2 py-1 text-[10px] text-[#2445c7]">
+                              {job.status}
+                            </span>
+                          </td>
+                          <td className="p-3">{job.proposals_count}</td>
+                          <td className="p-3">
+                            <Link href={`/jobs/${job.id}`} className="text-[#365cf5] hover:underline">
+                              View
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <EmptyDashboardPanel
+                  title="No posted jobs yet"
+                  detail="Post a project to start connecting with SAP integration consultants."
+                  href="/jobs/create"
+                  action="Post a job"
+                />
+              )}
+            </DashboardPanel>
+
+            <div className="grid gap-5 md:grid-cols-2">
+              <DashboardPanel
+                title="Community Forum"
+                action={<DashboardLink href="/forum">Open forum</DashboardLink>}
+              >
+                <p className="text-xs leading-5 text-[#667085]">
+                  Join technical discussions on SAP Cloud Integration, Integration Suite, and
+                  migration architecture alongside verified practitioners.
+                </p>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={() => router.push('/forum')}>
+                    Browse discussions
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => router.push('/forum/new')}>
+                    Start a topic
+                  </Button>
+                </div>
+              </DashboardPanel>
+
+              <DashboardPanel
+                title="Messages"
+                action={<DashboardLink href="/messages">Open inbox</DashboardLink>}
+              >
+                {state.conversations.length ? (
+                  <div className="space-y-4">
+                    {state.conversations.slice(0, 3).map((_, index) => (
+                      <MessagePreview
+                        key={index}
+                        name={`Conversation ${index + 1}`}
+                        detail="Open conversation to view messages"
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyDashboardPanel
+                    title="No conversations yet"
+                    detail="Messages will appear here when you connect with SAP consultants."
+                  />
+                )}
+              </DashboardPanel>
+            </div>
+          </div>
+
+          <div className="space-y-5">
+            <div className="rounded-xl border border-[#365cf5]/20 bg-[#365cf5]/[0.04] p-5 text-[#172033]">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-[16px] font-medium text-[#172033]">
+                  {hasCompanyProfile ? 'Workspace readiness' : 'Get started'}
+                </h2>
+                <span className="rounded-full bg-[#eef1ff] px-2.5 py-0.5 text-xs font-semibold text-[#365cf5]">
+                  {hasCompanyProfile ? 'Ready' : 'Setup'}
+                </span>
+              </div>
+
+              <p className="mt-3 text-xs leading-5 text-[#667085]">
+                {hasCompanyProfile
+                  ? 'Your company details are visible to SAP integration specialists across the marketplace.'
+                  : 'Add your company details and SAP footprint to establish trust with top integration consultants.'}
+              </p>
+
+              <ul className="mt-5 space-y-2.5">
+                {onboardingSteps.map((step) => (
+                  <li key={step.label}>
+                    <Link
+                      href={step.href}
+                      className="flex items-center gap-2.5 rounded-lg bg-white/80 px-3 py-2 text-xs font-medium text-[#172033] transition-colors hover:bg-white"
+                    >
+                      {step.done ? (
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-[#365cf5]" />
+                      ) : (
+                        <Circle className="h-4 w-4 shrink-0 text-[#98a2b3]" />
+                      )}
+                      <span className={step.done ? 'line-through text-[#667085]' : ''}>
+                        {step.label}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-5 w-full bg-white"
+                onClick={() => router.push('/profile')}
+              >
+                {hasCompanyProfile ? 'Manage profile' : 'Complete company profile'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </DashboardShell>
   );
 }

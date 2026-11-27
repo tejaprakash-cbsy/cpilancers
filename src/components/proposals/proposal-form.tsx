@@ -171,11 +171,13 @@ export default function ProposalForm({ jobId, onSubmitted }: ProposalFormProps) 
             required
           />
           <p className="mt-1 text-xs text-gray-500">
-            {new Intl.NumberFormat('en-US', {
+            {new Intl.NumberFormat('en-IN', {
               style: 'currency',
-              currency: 'USD',
+              currency: 'INR',
+              minimumFractionDigits: 0,
+              maximumFractionDigits: 2,
             }).format(form.proposed_price_cents / 100)}{' '}
-            (in cents)
+            (in paise)
           </p>
         </div>
       </div>

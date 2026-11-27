@@ -30,9 +30,9 @@ export const Header: React.FC = () => {
   }, []);
 
   const navLinks = [
-    { name: 'Forum', href: '/forum', icon: MessageSquare },
-    { name: 'Consultants', href: '/consultants', icon: UserRound },
     { name: 'Jobs', href: '/jobs', icon: BriefcaseBusiness },
+    { name: 'Consultants', href: '/consultants', icon: UserRound },
+    { name: 'Community Forum', href: '/forum', icon: MessageSquare },
   ];
 
   const isActive = (href: string) => pathname === href;

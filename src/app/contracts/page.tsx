@@ -42,7 +42,7 @@ export default function ContractsPage() {
 
   if (loading) {
     return (
-      <DashboardShell accountName="Loading..." roleLabel="Loading..." initials="--" navItems={[]} footerItems={[]}>
+      <DashboardShell accountName="Loading..." roleLabel="Workspace" initials="--">
         <div className="flex items-center justify-center min-h-[50vh]">
           <div className="text-gray-500">Loading contracts...</div>
         </div>
@@ -51,12 +51,11 @@ export default function ContractsPage() {
   }
 
   return (
-    <DashboardShell 
-      accountName={name} 
-      roleLabel={`${isClient ? 'Client' : 'Consultant'} account`} 
-      initials={initials} 
-      navItems={[]} 
-      footerItems={[]}
+    <DashboardShell
+      accountName={name}
+      roleLabel={isClient ? 'Enterprise Client' : 'SAP Consultant'}
+      initials={initials}
+      role={profile?.user.role}
     >
       <div className="p-5 sm:p-8 max-w-7xl mx-auto">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">

@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import manifest from '@/app/manifest';
 import { metadata as rootMetadata } from '@/app/layout';
@@ -126,6 +128,22 @@ describe('Navigation routes, legal compliance, and web assets regression tests',
       const component = VerifyEmailPage();
       expect(component).toBeDefined();
       expect(component.type).toBe('div');
+    });
+  });
+
+  describe('Public Header Navigation Order & Labels', () => {
+    it('renders Jobs, Consultants, and Community Forum in exact order', () => {
+      const headerSource = fs.readFileSync(
+        path.join(process.cwd(), 'src/components/layout/header.tsx'),
+        'utf8'
+      );
+      const jobsIndex = headerSource.indexOf("{ name: 'Jobs', href: '/jobs'");
+      const consultantsIndex = headerSource.indexOf("{ name: 'Consultants', href: '/consultants'");
+      const forumIndex = headerSource.indexOf("{ name: 'Community Forum', href: '/forum'");
+
+      expect(jobsIndex).toBeGreaterThan(-1);
+      expect(consultantsIndex).toBeGreaterThan(jobsIndex);
+      expect(forumIndex).toBeGreaterThan(consultantsIndex);
     });
   });
 });

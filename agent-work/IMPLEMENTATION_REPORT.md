@@ -1744,3 +1744,82 @@ Status: `REVIEW_REQUIRED` (Local implementation complete; no git push, no live D
    - `npm run lint`: 0 errors, 0 warnings.
    - `npx vitest run`: Passed all 49 test files (1,021 tests passed, 0 failures).
    - `npx next build --webpack`: Successfully compiled all 64 static and dynamic routes with exit code 0.
+
+
+## 2026-11-27 — Batch 4: Dashboard UI & Copy Polish (Community-First Launch Scope)
+
+### Status: `REVIEW_REQUIRED` (Local Implementation Complete)
+
+### Changes Implemented:
+1. **`src/components/layout/dashboard-shell.tsx`:**
+   - Added `Forum` (`/forum`) under `Overview` in `defaultNavItems`.
+   - Updated default `searchPlaceholder` to `"Search SAP discussions, jobs, consultants..."`.
+2. **`src/app/dashboard/consultant/page.tsx` & `src/app/dashboard/client/page.tsx`:**
+   - Removed all developer/API jargon (`endpoint`, `API`, `current services`, `not exposed`, `No proposals returned for this account`, `September earnings`, `September spend`).
+   - Added client-side local-time greeting (`getLocalGreeting()` -> `Good morning` / `Good afternoon` / `Good evening`).
+   - Updated sidebar role labels to `"SAP Consultant"` and `"Enterprise Client"`, added `Forum` (`/forum`), and hid unlaunched sidebar items (`Contracts`, `Earnings`, `Spending`, `Saved jobs`) and `UnavailablePanel` widgets.
+   - Replaced dead-end metric cards with launch-accurate metrics and merged the redundant onboarding banner + right-rail profile strength widget into one cohesive `bg-[#365cf5]/[0.04] border-[#365cf5]/20` card with a 3-step checklist.
+   - Maintained a single primary `#365cf5` CTA in the header and added a **Community Forum** card linking to `/forum` and `/forum/new`.
+3. **`src/tests/dashboard-polish.test.ts`:**
+   - Added 4 regression tests verifying jargon removal, local-time greeting, launch-scope sidebar/labels, and onboarding/forum cards.
+
+
+## 2026-11-27 — Batch 5: India Localization & Consultants Page Polish
+
+### Status: `REVIEW_REQUIRED` (Local Implementation Complete)
+
+### Changes Implemented:
+1. **`src/lib/utils/index.ts`:** Updated `formatCurrency` to default to `INR` (`₹`) with `en-IN` locale formatting.
+2. **`src/components/proposals/proposal-form.tsx`, `src/app/consultants/[id]/page.tsx`, `src/app/jobs/page.tsx`, `src/app/profile/page.tsx`:** Updated remaining `$` / `USD` / `UTC` UI displays to `INR` (`₹`) and `IST (UTC+5:30)`.
+3. **`src/app/consultants/page.tsx`:** Localized hourly rate buckets to INR, languages to Indian languages + German, locations to Indian SAP hubs, pills to SAP Integration domains, and replaced backend/API jargon with the Founding SAP Consultant Directory card linking to `/profile` and `/forum`.
+4. **`src/tests/india-localization.test.ts`:** Added 6 unit tests covering `formatCurrency` (`en-IN` / `₹`) and `/consultants`, `/jobs`, `/profile` localization.
+
+
+## 2026-11-27 — Batch 6: Dashboard Sidebar Cool Blue-Slate Light Theme
+
+### Status: `REVIEW_REQUIRED` (Local Implementation Complete)
+
+### Changes Implemented:
+1. **`src/components/layout/dashboard-shell.tsx`:** Redesigned sidebar and mobile drawer to `#f4f6fb` with `border-slate-200/80`, `Logo variant="light"`, white profile switcher card, white active nav pill with `#365cf5` accent, muted footer section with divider, and accessible focus rings (`focus-visible:ring-[#365cf5]/40`).
+2. **`src/tests/dashboard-polish.test.ts`:** Added regression test asserting the Cool Blue-Slate Light theme tokens and removal of `bg-[#111827]`.
+
+
+## 2026-11-27 — Batch 7: DashboardShell Navigation Centralization & Double-Header Fix
+
+### Status: `REVIEW_REQUIRED` (Local Implementation Complete)
+
+### Changes Implemented:
+1. **`src/components/layout/dashboard-shell.tsx`:** Exported `getDashboardNavItems(role)`, added `role` prop, ensured `DashboardShell` always renders role-based nav items (including `Forum` and role-specific `Overview` home) when `navItems` is omitted/empty, added `Log out` to the sidebar footer, and kept the `#f4f6fb` light theme.
+2. **`src/components/layout/app-chrome.tsx`:** Suppressed public `<Header />` and `<Footer />` on `/contracts` and `/contracts/*` workspace routes alongside `/dashboard` and `/admin`.
+3. **`src/app/contracts/page.tsx`, `src/app/contracts/[id]/page.tsx`, `src/app/dashboard/consultant/page.tsx`, `src/app/dashboard/client/page.tsx`, `src/app/admin/page.tsx`:** Removed `navItems={[]}` overrides and standardized on passing `role` to `DashboardShell`.
+4. **`src/tests/dashboard-polish.test.ts`:** Added regression tests for `getDashboardNavItems`, `AppChrome` `/contracts` suppression, and removal of `navItems={[]}` overrides.
+
+
+## 2026-11-27 — Batch 8: Public Header Navigation Order & Labels
+
+### Status: `REVIEW_REQUIRED` (Local Implementation Complete)
+
+### Changes Implemented:
+1. **`src/components/layout/header.tsx`:** Updated `navLinks` (desktop and mobile) to `Jobs` (`/jobs`), `Consultants` (`/consultants`), and `Community Forum` (`/forum`), preserving styling and right-side actions.
+2. **`src/tests/navigation-routes-and-assets.test.ts`:** Added regression test verifying exact order and labels in `header.tsx`.
+
+
+## 2026-11-27 — Batch 9: Auth UI Redesign (Split-Screen Layout, Segmented Control, Input Polish)
+
+### Status: `REVIEW_REQUIRED` (Local Implementation Complete)
+
+### Changes Implemented:
+1. **`src/components/layout/app-chrome.tsx`:** Suppressed public `<Header />` and `<Footer />` on auth routes (`/login`, `/register`, `/reset-password`, `/verify-email`, `/auth-error`, `/auth/*`).
+2. **`src/app/(auth)/layout.tsx`:** Implemented distraction-free split-screen layout with `#f4f6fb` brand panel (`#365cf5` radial glow, logo, headline, 3 honest SAP value points, footer links) and `bg-white` right form panel (`← Back to home` + mobile logo).
+3. **`src/app/(auth)/login/page.tsx`:** Redesigned with `max-w-[420px]`, standardized `h-11` inputs, Show/Hide password toggle, inline `Forgot password?`, clean Google button, native segmented pill control, and `tracking-[0.35em] font-mono` 6-digit OTP input. Preserved all auth endpoints, OAuth/OTP logic, rate-limit mapping, and `?next=` handling.
+4. **`src/app/(auth)/register/page.tsx`:** Redesigned with `max-w-[460px]`, matching typography/inputs, Show/Hide password toggles, `#365cf5` role cards with top-right check badge, and clean Terms/Privacy checkbox. Preserved `?role=` OAuth and `/api/auth/register` logic.
+
+
+## 2026-11-27 — Batch 10: Idempotent, Reversible SAP CPI Forum Seed Script
+
+### Status: `REVIEW_REQUIRED` (Local Implementation Complete — Not Executed Against Any Remote DB)
+
+### Changes Implemented:
+1. **`scripts/data/sap-cpi-forum-seed.ts`:** Created dataset with 10 `@seed.cpilancers.com` personas, 5 SAP Integration categories, and 25 original plain-text SAP CPI discussions (5 per category, 1 pinned welcome thread, 2–4 replies each, votes, and accepted answers).
+2. **`scripts/seed-forum.ts`:** Implemented `--dry-run`, `--confirm-seed`, and `--cleanup --confirm-cleanup`, loading `.env.local` (fallback `.env`), never inserting into `public.consultant_profiles`, and safely preserving any legacy categories that still have discussions (`ON DELETE RESTRICT`).
+3. **`src/tests/forum-seed.test.ts`:** Added 5 unit tests validating all 25 threads and replies against `createDiscussionSchema` / `createReplySchema`, plain-text rules, uniqueness, and safety guards.

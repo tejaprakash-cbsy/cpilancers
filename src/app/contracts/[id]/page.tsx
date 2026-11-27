@@ -133,7 +133,7 @@ export default function ContractDetailPage({ params }: { params: Promise<{ id: s
 
   if (loading && !contract) {
     return (
-      <DashboardShell accountName="Loading..." roleLabel="Loading..." initials="--" navItems={[]} footerItems={[]}>
+      <DashboardShell accountName="Loading..." roleLabel="Workspace" initials="--">
         <div className="flex items-center justify-center min-h-[50vh]">
           <div className="text-gray-500">Loading contract...</div>
         </div>
@@ -143,7 +143,7 @@ export default function ContractDetailPage({ params }: { params: Promise<{ id: s
 
   if (error && !contract) {
     return (
-      <DashboardShell accountName={name} roleLabel="Error" initials={initials} navItems={[]} footerItems={[]}>
+      <DashboardShell accountName={name} roleLabel="Error" initials={initials} role={profile?.user.role}>
         <div className="p-5 sm:p-8 max-w-4xl mx-auto">
           <div className="p-6 bg-red-50 text-red-700 border border-red-200 rounded-lg">
             <h2 className="text-lg font-semibold mb-2">Error</h2>
@@ -160,12 +160,11 @@ export default function ContractDetailPage({ params }: { params: Promise<{ id: s
   if (!contract) return null;
 
   return (
-    <DashboardShell 
-      accountName={name} 
-      roleLabel={`${isClient ? 'Client' : 'Consultant'} account`} 
-      initials={initials} 
-      navItems={[]} 
-      footerItems={[]}
+    <DashboardShell
+      accountName={name}
+      roleLabel={isClient ? 'Enterprise Client' : 'SAP Consultant'}
+      initials={initials}
+      role={profile?.user.role}
     >
       <div className="p-5 sm:p-8 max-w-5xl mx-auto pb-24">
         <button 

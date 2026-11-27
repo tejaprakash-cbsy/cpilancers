@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, BarChart3, FileWarning, Users, WalletCards } from 'lucide-react';
-import { DashboardShell, type DashboardNavItem } from '@/components/layout/dashboard-shell';
+import { AlertTriangle, BarChart3, FileWarning, Users } from 'lucide-react';
+import { DashboardShell } from '@/components/layout/dashboard-shell';
 
 type ApiState = {
   overview: Record<string, unknown> | null;
@@ -17,13 +17,6 @@ type ApiState = {
 type AdminRow = Record<string, unknown>;
 type PaginatedRows = { rows: AdminRow[]; total: number; page: number; limit: number };
 type FailedTransactions = { payments: PaginatedRows; payouts: PaginatedRows };
-
-const navItems: DashboardNavItem[] = [
-  { label: 'Overview', href: '/admin', icon: BarChart3 },
-  { label: 'Failed transactions', href: '/admin#transactions', icon: WalletCards },
-  { label: 'Disputes', href: '/admin#disputes', icon: AlertTriangle },
-  { label: 'Reports', href: '/admin#reports', icon: FileWarning },
-];
 
 async function readApi<T>(path: string): Promise<T> {
   const response = await fetch(path, { credentials: 'include' });
@@ -60,7 +53,7 @@ export default function AdminDashboardPage() {
   }, [router]);
 
   const metric = (key: string) => String(state.overview?.[key] ?? '—');
-  return <DashboardShell accountName="CPI Lancers" roleLabel="Administrator" initials="AD" navItems={navItems} footerItems={[]} searchPlaceholder="Search the admin workspace">
+  return <DashboardShell accountName="CPI Lancers" roleLabel="Administrator" initials="AD" role="admin" searchPlaceholder="Search the admin workspace">
     <div className="p-5 sm:p-8">
       <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end"><div><h1 className="text-[28px] font-normal">Admin overview</h1><p className="mt-1 text-sm text-[#667085]">Review marketplace health, risk queues, and failed money movement.</p></div><span className="rounded-full bg-[#eef1ff] px-3 py-1 text-xs font-medium text-[#2445c7]">Local admin surface</span></div>
       {state.loading && <div className="mt-8 h-32 animate-pulse rounded-xl bg-white" />}
